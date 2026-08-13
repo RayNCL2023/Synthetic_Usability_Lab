@@ -1,0 +1,29 @@
+{
+  "name": "synthetic-usability-lab",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/**\" dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "db:generate": "pnpm --filter @sul/shared db:generate",
+    "db:migrate": "pnpm --filter @sul/shared db:migrate",
+    "fixture": "pnpm --filter @sul/worker fixture",
+    "crawl": "pnpm --filter @sul/worker crawl",
+    "run:cli": "pnpm --filter @sul/worker run:cli",
+    "eval": "pnpm --filter @sul/worker eval"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
