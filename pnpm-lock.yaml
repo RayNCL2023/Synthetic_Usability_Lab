@@ -35,6 +35,9 @@ importers:
       '@sul/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      drizzle-orm:
+        specifier: ^0.38.4
+        version: 0.38.4(postgres@3.4.9)
       zod:
         specifier: ^3.24.1
         version: 3.25.76
