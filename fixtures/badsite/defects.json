@@ -1,0 +1,79 @@
+{
+  "$comment": "Ground truth for `pnpm eval`. Each planted defect is something a competent reviewer would flag. Recall is measured against this list; anything an issue cluster reports that is NOT here counts as a candidate false positive and goes to one-time manual adjudication, after which the verdict is cached in eval/adjudications.json.",
+  "site": "fixtures/badsite",
+  "goal": "Find pricing and start a trial",
+  "defects": [
+    {
+      "id": "pricing-buried",
+      "title": "Pricing is three clicks from the homepage",
+      "category": "navigation",
+      "expectedSeverity": "major",
+      "page": "/",
+      "detectableBy": ["impatient_mobile", "procurement", "screen_reader"],
+      "notes": "Home -> Products -> Plans -> Plan details. No pricing link in primary nav."
+    },
+    {
+      "id": "icon-nav-unlabelled",
+      "title": "Primary navigation is icon-only with no accessible names",
+      "category": "accessibility",
+      "expectedSeverity": "blocker",
+      "page": "/",
+      "detectableBy": ["screen_reader", "impatient_mobile"],
+      "notes": "Anchors contain a glyph span and no text, aria-label, or title."
+    },
+    {
+      "id": "low-contrast-cta",
+      "title": "Primary CTA fails contrast against its background",
+      "category": "clarity",
+      "expectedSeverity": "major",
+      "page": "/",
+      "detectableBy": ["impatient_mobile", "procurement"],
+      "notes": "#b9c6d6 on #cfd8e3 — roughly 1.3:1, well under WCAG AA 4.5:1."
+    },
+    {
+      "id": "unlabelled-email-input",
+      "title": "Trial signup email field has no label",
+      "category": "forms",
+      "expectedSeverity": "blocker",
+      "page": "/trial.html",
+      "detectableBy": ["screen_reader"],
+      "notes": "Bare input with a placeholder only. No label, aria-label, or aria-labelledby."
+    },
+    {
+      "id": "focus-trapping-modal",
+      "title": "Newsletter modal traps focus and has no visible close",
+      "category": "accessibility",
+      "expectedSeverity": "blocker",
+      "page": "/plans.html",
+      "detectableBy": ["screen_reader", "impatient_mobile"],
+      "notes": "Appears on load, no aria-modal, close control is a bare glyph div with no role."
+    },
+    {
+      "id": "carousel-no-alt",
+      "title": "Customer logo carousel images have no alt text",
+      "category": "accessibility",
+      "expectedSeverity": "major",
+      "page": "/",
+      "detectableBy": ["screen_reader"],
+      "notes": "Six img elements, all alt=\"\" while conveying meaning (customer names)."
+    },
+    {
+      "id": "no-security-info",
+      "title": "No security, compliance, or data-handling information anywhere",
+      "category": "trust",
+      "expectedSeverity": "major",
+      "page": "*",
+      "detectableBy": ["procurement"],
+      "notes": "Absence-of-information finding. Tests whether the persona reports what is missing rather than only what is present."
+    },
+    {
+      "id": "contact-is-dead-end",
+      "title": "Contact page offers no actual contact route",
+      "category": "trust",
+      "expectedSeverity": "minor",
+      "page": "/contact.html",
+      "detectableBy": ["procurement"],
+      "notes": "Says 'get in touch' with no address, phone, form, or email."
+    }
+  ]
+}

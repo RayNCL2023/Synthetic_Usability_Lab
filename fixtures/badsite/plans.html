@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plans — Meridian</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- DEFECT focus-trapping-modal: appears on load, no role/aria-modal, close
+     control is a bare div glyph, and the trap script below keeps focus inside
+     with no Escape handler. -->
+<div id="newsletter-modal">
+  <div class="inner">
+    <h3>Before you go</h3>
+    <p>Join 20,000 delivery leads getting our monthly briefing.</p>
+    <input type="email" id="nl-email" placeholder="you@company.com">
+    <button id="nl-submit">Subscribe</button>
+    <div class="x" id="nl-close">&#10005;</div>
+  </div>
+</div>
+
+<header>
+  <div class="brand">Meridian</div>
+  <nav>
+    <a href="/index.html">&#9750;</a>
+    <a href="/products.html">&#9636;</a>
+    <a href="/about.html">&#9711;</a>
+    <a href="/contact.html">&#9993;</a>
+  </nav>
+</header>
+
+<main>
+  <p class="breadcrumb">Home / Products / Plans</p>
+  <h1>Plans</h1>
+  <p>
+    Meridian is available in three tiers. Each tier includes the core platform;
+    limits and support levels vary.
+  </p>
+
+  <div class="card">
+    <h3>Starter</h3>
+    <p>For small teams getting started. Up to 10 seats.</p>
+  </div>
+  <div class="card">
+    <h3>Growth</h3>
+    <p>For scaling teams that need approvals and audit history.</p>
+  </div>
+  <div class="card">
+    <h3>Enterprise</h3>
+    <p>For organisations with procurement and compliance requirements.</p>
+  </div>
+
+  <!-- Step 3 of 3. Actual numbers live one more click away. -->
+  <a class="secondary" href="/plan-details.html">Full plan comparison and rates</a>
+</main>
+
+<footer>
+  <p>Meridian Software. All rights reserved.</p>
+</footer>
+
+<script>
+  // Focus trap with no escape hatch — deliberate.
+  (function () {
+    var modal = document.getElementById('newsletter-modal');
+    var email = document.getElementById('nl-email');
+    if (!modal || !email) return;
+    email.focus();
+    document.addEventListener('focusin', function (e) {
+      if (modal && !modal.contains(e.target)) {
+        email.focus();
+      }
+    });
+    // The close control responds only to a real mouse click on the glyph.
+    var x = document.getElementById('nl-close');
+    if (x) {
+      x.addEventListener('click', function () {
+        modal.parentNode.removeChild(modal);
+      });
+    }
+  })();
+</script>
+
+</body>
+</html>

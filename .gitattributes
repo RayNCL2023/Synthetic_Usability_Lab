@@ -1,0 +1,8 @@
+# The eval harness runs in a Linux container; the dev loop runs on Windows.
+# Normalise line endings so screenshots, snapshots, and golden files don't
+# differ for reasons that have nothing to do with the product.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
