@@ -29,6 +29,21 @@ export interface PricingEntry {
   /** USD per million tokens. */
   inputPerMTok: number;
   outputPerMTok: number;
+  /**
+   * Per-provider cache multipliers. Anthropic's defaults apply when omitted.
+   * Gemini prices cached input differently, so these cannot be global
+   * constants without quietly mispricing one provider.
+   */
+  cacheWriteMultiplier?: Partial<Record<CacheTtl, number>>;
+  cacheReadMultiplier?: number;
+  /**
+   * True when the run did not actually cost money — a free-tier provider.
+   * The figure is still computed at published paid rates so the product has a
+   * comparable number, but it must be surfaced as NOTIONAL wherever it is
+   * shown. Reporting free-tier usage as real spend would make COSTS.md
+   * fiction.
+   */
+  notional?: boolean;
 }
 
 export const PRICING: readonly PricingEntry[] = [
@@ -62,7 +77,57 @@ export const PRICING: readonly PricingEntry[] = [
     inputPerMTok: 1.0,
     outputPerMTok: 5.0,
   },
+
+  // --- Gemini -------------------------------------------------------------
+  // Run on the free tier, where actual spend is zero. These are the PUBLISHED
+  // PAID rates, kept so computeCostCents still produces a comparable figure —
+  // marked `notional` so nothing downstream can present it as money spent.
+  //
+  // ⚠️ These rates were entered from documentation and have NOT been verified
+  // against the live pricing page from this environment. Confirm before any
+  // figure derived from them goes into COSTS.md.
+  {
+    model: "gemini-2.5-flash",
+    from: null,
+    to: null,
+    inputPerMTok: 0.3,
+    outputPerMTok: 2.5,
+    cacheReadMultiplier: 0.25,
+    notional: true,
+  },
+  {
+    model: "gemini-2.5-flash-lite",
+    from: null,
+    to: null,
+    inputPerMTok: 0.1,
+    outputPerMTok: 0.4,
+    cacheReadMultiplier: 0.25,
+    notional: true,
+  },
+  {
+    model: "gemini-2.0-flash",
+    from: null,
+    to: null,
+    inputPerMTok: 0.1,
+    outputPerMTok: 0.4,
+    cacheReadMultiplier: 0.25,
+    notional: true,
+  },
+  {
+    model: "gemini-2.5-pro",
+    from: null,
+    to: null,
+    inputPerMTok: 1.25,
+    outputPerMTok: 10.0,
+    cacheReadMultiplier: 0.25,
+    notional: true,
+  },
 ];
+
+/** True when this model's cost figures are notional rather than money spent. */
+export function isNotionalPricing(model: string, at: Date): boolean {
+  return findPricing(model, at).notional === true;
+}
 
 /** Multipliers applied to the model's base INPUT rate. */
 export const CACHE_WRITE_MULTIPLIER: Record<CacheTtl, number> = {
@@ -144,15 +209,16 @@ export function computeCost(
   const p = findPricing(model, at);
   const perToken = (perMTok: number) => perMTok / 1_000_000;
 
+  const writeMultiplier =
+    p.cacheWriteMultiplier?.[ttl] ?? CACHE_WRITE_MULTIPLIER[ttl];
+  const readMultiplier = p.cacheReadMultiplier ?? CACHE_READ_MULTIPLIER;
+
   const inputCents = usage.inputTokens * perToken(p.inputPerMTok) * 100;
   const outputCents = usage.outputTokens * perToken(p.outputPerMTok) * 100;
   const cacheWriteCents =
-    usage.cacheWriteTokens *
-    perToken(p.inputPerMTok) *
-    CACHE_WRITE_MULTIPLIER[ttl] *
-    100;
+    usage.cacheWriteTokens * perToken(p.inputPerMTok) * writeMultiplier * 100;
   const cacheReadCents =
-    usage.cacheReadTokens * perToken(p.inputPerMTok) * CACHE_READ_MULTIPLIER * 100;
+    usage.cacheReadTokens * perToken(p.inputPerMTok) * readMultiplier * 100;
 
   return {
     inputCents,

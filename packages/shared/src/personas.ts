@@ -38,6 +38,31 @@ export interface Persona {
  * so the rule the validator enforces and the rule the model is told are never
  * out of sync.
  */
+/**
+ * Enum values restated verbatim in the prompt.
+ *
+ * Belt and braces, deliberately. Gemini's `responseSchema` keeps `enum` as a
+ * real constraint and Anthropic's `zodOutputFormat` demotes it to prose — but
+ * we restate the values either way, because the schema layer is the one part
+ * of this system we do not control and cannot test on every release. Local
+ * `safeParse` remains the enforcement of record; this only reduces how often
+ * it has to reject.
+ */
+export const ENUM_CONTRACT = `
+ALLOWED VALUES — use these exact strings and no others:
+
+  action.type      : click | type | scroll | go_back | wait | finish
+  action.direction : down | up            (required only for scroll)
+  action.outcome   : goal_achieved | gave_up  (required only for finish)
+
+  observations[].severity : blocker | major | minor | nitpick
+  observations[].category : navigation | clarity | trust | accessibility |
+                            performance | forms | content
+
+Any other value is rejected and the step is wasted. Fields that do not apply to
+your chosen action must be null, not omitted and not an empty string.
+`.trim();
+
 export const GROUNDING_CONTRACT = `
 GROUNDING RULES — these are enforced in code, not on trust:
 
@@ -184,5 +209,5 @@ export function getPersona(key: string): Persona {
  * breakpoint. Keep this function's output byte-stable.
  */
 export function buildSystemPrompt(persona: Persona): string {
-  return [persona.systemPrompt, "", GROUNDING_CONTRACT].join("\n");
+  return [persona.systemPrompt, "", GROUNDING_CONTRACT, "", ENUM_CONTRACT].join("\n");
 }

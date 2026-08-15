@@ -74,7 +74,21 @@ export function buildRetryMessage(problems: string[]): string {
 
 export interface GroundingStats {
   decisions: number;
+  /** Well-formed responses that referenced elements not on the page. */
   rejectedDecisions: number;
+  /**
+   * Responses that failed to parse against the schema at all — a bad enum
+   * value, a missing field, malformed JSON.
+   *
+   * Tracked separately from grounding because the two say different things
+   * about a provider. A high grounding rate means the model is hallucinating
+   * page structure; a high schema rate means the provider's structured-output
+   * constraint is not holding. Averaging them into one number would hide
+   * whichever is actually broken — and the two providers differ here by
+   * construction (Gemini keeps enums as a real constraint, Anthropic demotes
+   * them to prose), so this is the metric that makes them comparable.
+   */
+  schemaRejections: number;
   droppedObservations: number;
   totalObservations: number;
 }
@@ -83,12 +97,18 @@ export function emptyGroundingStats(): GroundingStats {
   return {
     decisions: 0,
     rejectedDecisions: 0,
+    schemaRejections: 0,
     droppedObservations: 0,
     totalObservations: 0,
   };
 }
 
-/** The headline metric: share of decisions that failed grounding validation. */
+/** Share of decisions that referenced elements not present in the snapshot. */
 export function groundingRejectionRate(s: GroundingStats): number {
   return s.decisions === 0 ? 0 : s.rejectedDecisions / s.decisions;
+}
+
+/** Share of decisions the provider returned in a shape we could not parse. */
+export function schemaRejectionRate(s: GroundingStats): number {
+  return s.decisions === 0 ? 0 : s.schemaRejections / s.decisions;
 }

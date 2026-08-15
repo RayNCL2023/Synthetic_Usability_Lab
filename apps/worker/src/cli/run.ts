@@ -2,22 +2,22 @@ import {
   BudgetEnv,
   BrowserEnv,
   DataEnv,
-  ModelEnv,
   formatCents,
   getPersona,
   loadEnv,
   PERSONA_KEYS,
   totalTokens,
-  type ModelConfig,
 } from "@sul/shared";
 import { getDb, closeDb } from "@sul/shared/db";
 import { BrowserDriver } from "../browser/driver.js";
-import { AnthropicModelClient } from "../model/anthropic.js";
-import { HeuristicModelClient } from "../model/heuristic.js";
+import { buildModelClient } from "../model/factory.js";
 import type { ModelClient } from "../model/client.js";
 import { RunBudget, describeAbort } from "../loop/budget.js";
 import { runAgentLoop } from "../loop/agent.js";
-import { groundingRejectionRate } from "../loop/validator.js";
+import {
+  groundingRejectionRate,
+  schemaRejectionRate,
+} from "../loop/validator.js";
 import {
   createPersonaRun,
   createRun,
@@ -58,22 +58,19 @@ async function main() {
   const goal = arg("goal") ?? "Find pricing and start a trial";
 
   // --mock swaps in the offline heuristic walker. It proves everything except
-  // the HTTP call to Anthropic — snapshot, grounding validation, action
+  // the HTTP call to the provider — snapshot, grounding validation, action
   // execution, persistence, and cost accounting all run for real — which is
-  // what makes the pipeline verifiable without spending money or a key.
+  // what makes the pipeline verifiable without a key.
   const mock = process.argv.includes("--mock");
 
   const data = loadEnv(DataEnv);
-  // Only the API key is relaxed in mock mode — model ids, effort, and cache TTL
-  // still come from config so the printed cost reflects the real settings.
-  const modelEnv = mock
-    ? {
-        ...loadEnv(ModelEnv.omit({ ANTHROPIC_API_KEY: true })),
-        ANTHROPIC_API_KEY: "",
-      }
-    : loadEnv(ModelEnv);
   const budgetEnv = loadEnv(BudgetEnv);
   const browserEnv = loadEnv(BrowserEnv);
+
+  // Provider selection and the shared rate limiter live behind the factory.
+  const built = buildModelClient({ mock });
+  const model: ModelClient = built.client;
+  const modelConfig = built.config;
 
   const positional = process.argv.slice(2).find((a) => !a.startsWith("--"));
   let target = positional;
@@ -88,13 +85,6 @@ async function main() {
     );
   }
 
-  const modelConfig: ModelConfig = {
-    loopModel: modelEnv.SUL_LOOP_MODEL,
-    loopEffort: modelEnv.SUL_LOOP_EFFORT,
-    clusterModel: modelEnv.SUL_CLUSTER_MODEL,
-    clusterEffort: modelEnv.SUL_CLUSTER_EFFORT,
-    cacheTtl: modelEnv.SUL_CACHE_TTL,
-  };
 
   const db = getDb(data.DATABASE_URL);
   const storage = isStorageConfigured();
@@ -119,24 +109,8 @@ async function main() {
       maxWallClockMs: budgetEnv.SUL_MAX_WALL_CLOCK_MS,
       maxCostCents: budgetEnv.SUL_MAX_COST_CENTS,
     },
-    modelEnv.SUL_CACHE_TTL,
+    modelConfig.cacheTtl as "5m" | "1h",
   );
-
-  const model: ModelClient = mock
-    ? new HeuristicModelClient(
-        modelEnv.SUL_LOOP_MODEL,
-        persona.harness.maxSteps,
-      )
-    : new AnthropicModelClient({
-        apiKey: modelEnv.ANTHROPIC_API_KEY,
-        loopModel: modelEnv.SUL_LOOP_MODEL,
-        loopEffort: modelEnv.SUL_LOOP_EFFORT,
-        loopMaxTokens: modelEnv.SUL_LOOP_MAX_TOKENS,
-        clusterModel: modelEnv.SUL_CLUSTER_MODEL,
-        clusterEffort: modelEnv.SUL_CLUSTER_EFFORT,
-        clusterMaxTokens: modelEnv.SUL_CLUSTER_MAX_TOKENS,
-        cacheTtl: modelEnv.SUL_CACHE_TTL,
-      });
 
   const driver = new BrowserDriver({
     headless: browserEnv.SUL_HEADLESS,
@@ -223,10 +197,18 @@ async function main() {
         `(${result.grounding.rejectedDecisions}/${result.grounding.decisions} decisions)`,
     );
     console.log(
+      `schema rejects     ${(schemaRejectionRate(result.grounding) * 100).toFixed(1)}% ` +
+        `(${result.grounding.schemaRejections}/${result.grounding.decisions} decisions)`,
+    );
+    console.log(
       `observations       ${result.grounding.totalObservations} produced, ` +
         `${result.grounding.droppedObservations} dropped as ungrounded`,
     );
-    console.log(`cost               ${formatCents(totals.costCents)}`);
+    console.log(
+      `cost               ${formatCents(totals.costCents)}` +
+        // Never present free-tier usage as money spent.
+        (built.notional ? "  (NOTIONAL — free tier, at published paid rates)" : ""),
+    );
     console.log(`\ntrace persisted. run id: ${runId}`);
   } finally {
     await session.close();

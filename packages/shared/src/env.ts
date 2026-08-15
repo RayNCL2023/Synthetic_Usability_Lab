@@ -37,6 +37,25 @@ export const StorageEnv = z.object({
   S3_PRESIGN_TTL_SECONDS: int(3600),
 });
 
+export const ProviderEnv = z.object({
+  SUL_PROVIDER: z.enum(["gemini", "anthropic"]).default("gemini"),
+});
+
+/** Gemini-specific config. Free tier, so rate limiting is mandatory. */
+export const GeminiEnv = z.object({
+  GEMINI_API_KEY: z.string().min(1),
+  SUL_GEMINI_LOOP_MODEL: z.string().default("gemini-2.5-flash"),
+  SUL_GEMINI_CLUSTER_MODEL: z.string().default("gemini-2.5-flash"),
+  /**
+   * Conservative until measured. Three persona workers share ONE bucket, so
+   * this is the whole-run rate, not per worker.
+   */
+  SUL_GEMINI_RPM: int(10),
+  SUL_GEMINI_BURST: int(1),
+  /** -1 lets the model decide; 0 disables thinking. */
+  SUL_GEMINI_THINKING_BUDGET: int(-1),
+});
+
 export const ModelEnv = z.object({
   ANTHROPIC_API_KEY: z.string().min(1),
   SUL_LOOP_MODEL: z.string().default("claude-sonnet-5"),
@@ -113,3 +132,6 @@ export type ModelConfigEnv = z.infer<typeof ModelEnv>;
 export type BudgetConfig = z.infer<typeof BudgetEnv>;
 export type BrowserConfig = z.infer<typeof BrowserEnv>;
 export type SafetyConfig = z.infer<typeof SafetyEnv>;
+
+export type ProviderConfig = z.infer<typeof ProviderEnv>;
+export type GeminiConfig = z.infer<typeof GeminiEnv>;

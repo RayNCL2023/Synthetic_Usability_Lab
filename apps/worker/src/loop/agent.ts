@@ -149,6 +149,7 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentRunResu
 
     grounding.decisions += decided.attempts;
     grounding.rejectedDecisions += decided.rejections;
+    grounding.schemaRejections += decided.schemaRejections;
 
     if (!decided.decision) {
       // Three distinct reasons land here and must NOT be conflated:
@@ -255,6 +256,8 @@ async function decideWithValidation(args: DecideWithValidationArgs): Promise<{
   attempts: number;
   rejections: number;
   refused: boolean;
+  /** Parse/schema failures, tracked apart from grounding failures. */
+  schemaRejections: number;
   /** Set when a budget cap, not the model, ended this decision. */
   cappedBy: AbortReason | null;
   failureReason: string | null;
@@ -268,6 +271,7 @@ async function decideWithValidation(args: DecideWithValidationArgs): Promise<{
   let retryProblems: string[] | undefined;
   let attempts = 0;
   let rejections = 0;
+  let schemaRejections = 0;
   let totalLatency = 0;
   let totalCost = 0;
   const totals: StepRecord["usage"] = {
@@ -288,6 +292,7 @@ async function decideWithValidation(args: DecideWithValidationArgs): Promise<{
         decision: null,
         attempts,
         rejections,
+        schemaRejections,
         refused: false,
         cappedBy: affordable,
         failureReason: affordable,
@@ -323,6 +328,7 @@ async function decideWithValidation(args: DecideWithValidationArgs): Promise<{
         decision: null,
         attempts,
         rejections,
+        schemaRejections,
         refused: true,
         cappedBy: null,
         failureReason: `the model declined to act on this page (${res.refusalCategory ?? "unspecified"})`,
@@ -342,6 +348,7 @@ async function decideWithValidation(args: DecideWithValidationArgs): Promise<{
         decision: null,
         attempts,
         rejections,
+        schemaRejections,
         refused: false,
         cappedBy: null,
         failureReason:
@@ -355,7 +362,11 @@ async function decideWithValidation(args: DecideWithValidationArgs): Promise<{
     }
 
     if (!res.decision) {
+      // A response we could not parse: bad enum value, missing field, malformed
+      // JSON. Distinct from a grounding failure, which parses fine but cites an
+      // element that is not on the page.
       rejections++;
+      schemaRejections++;
       retryProblems = [res.parseError ?? "response could not be parsed"];
       continue;
     }
@@ -366,6 +377,7 @@ async function decideWithValidation(args: DecideWithValidationArgs): Promise<{
         decision: res.decision,
         attempts,
         rejections,
+        schemaRejections,
         refused: false,
         cappedBy: null,
         failureReason: null,
@@ -385,6 +397,7 @@ async function decideWithValidation(args: DecideWithValidationArgs): Promise<{
     decision: null,
     attempts,
     rejections,
+    schemaRejections,
     refused: false,
     cappedBy: null,
     failureReason:

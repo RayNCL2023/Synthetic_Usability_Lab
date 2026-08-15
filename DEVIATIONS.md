@@ -249,3 +249,80 @@ model — deliberately, so a run is never silently reported as free. A fake id i
 the double would have forced either a test fixture into the production pricing
 table or every loop test around the cost path entirely. Using a real id means
 cost accounting is exercised on every pass through the loop.
+
+---
+
+## Task 1 — Gemini provider (contract findings)
+
+### G1 — Gemini KEEPS enums as a real constraint; Anthropic demotes them
+
+Verified the same way as DEVIATIONS V2 — by emitting the schema and asserting on
+it, not by reading documentation. Covered by `gemini-schema.test.ts`.
+
+Gemini's `Schema` type has a first-class `enum` field, documented as "restrict a
+value to a fixed set of values", set alongside `format: "enum"`. Our converter
+preserves it, so the emitted `responseSchema` contains:
+
+```json
+"type": { "type": "STRING", "format": "enum",
+          "enum": ["click","type","scroll","go_back","wait","finish"] }
+```
+
+Contrast with the Anthropic path, where `zodOutputFormat` strips `enum` and
+narrates it in the description. **The two providers differ structurally here**,
+which is exactly why `schema_rejection_rate` is now tracked separately from
+`grounding_rejection_rate` — one number could not have made them comparable.
+
+Whether the service *grammar-constrains* generation or merely validates after
+the fact cannot be established without live calls. Local `safeParse` therefore
+remains the enforcement of record on both providers, and the enum values are
+restated verbatim in every persona prompt regardless.
+
+### G2 — Gemini EXCLUDES thinking tokens from `candidatesTokenCount`
+
+The opposite of Anthropic, and a silent undercount if missed.
+
+The shipped SDK documents `totalTokenCount` as the **sum** of
+`promptTokenCount`, `candidatesTokenCount`, `toolUsePromptTokenCount` and
+`thoughtsTokenCount` — so thinking is a separate addend. Anthropic's
+`output_tokens`, by contrast, is explicitly "the inclusive, authoritative total
+used for billing".
+
+Mapping `candidatesTokenCount` straight onto our `outputTokens` would have
+undercounted billable output on every thinking-enabled call. `usageFrom` returns
+`candidatesTokenCount + thoughtsTokenCount`. Test pins it.
+
+### G3 — Gemini's `promptTokenCount` already includes cached tokens
+
+Documented as: "When `cached_content` is set, this also includes the number of
+tokens in the cached content."
+
+So reporting `promptTokenCount` as input **and** `cachedContentTokenCount` as a
+cache read would bill the cached prefix twice — once at full rate and once at
+the cache-read rate. `usageFrom` subtracts, and a test asserts the two fields
+reconstruct the original prompt count exactly once.
+
+### G4 — Cache multipliers moved onto the pricing row
+
+`CACHE_WRITE_MULTIPLIER` / `CACHE_READ_MULTIPLIER` were global Anthropic
+constants (1.25x/2.0x write, 0.1x read). Gemini prices cached input differently,
+so the multipliers are now optional per-row overrides with the Anthropic values
+as defaults. Gemini rows carry `cacheReadMultiplier: 0.25` and no cache-write
+charge.
+
+### G5 — ⚠️ Gemini pricing rows are UNVERIFIED
+
+The Gemini rows were entered from documentation and **have not been checked
+against the live pricing page from this environment**. They are marked
+`notional: true`, and the CLI labels any figure derived from them
+"(NOTIONAL — free tier, at published paid rates)". Confirm the rates before any
+number derived from them reaches COSTS.md.
+
+### G6 — BLOCKED: Task 2 cannot run, no `GEMINI_API_KEY`
+
+`.env` line 32 is `GEMINI_API_KEY=` (empty); nothing in the process environment.
+Boot fails loudly and names the variable, as designed.
+
+Everything up to the HTTP boundary is built and tested: provider switch, schema
+conversion, finishReason mapping, usage mapping, shared token bucket, 429
+classification, backoff. **No real numbers exist for this project yet.**
