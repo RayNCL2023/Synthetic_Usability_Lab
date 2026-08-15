@@ -86,6 +86,47 @@ export const PRICING: readonly PricingEntry[] = [
   // ⚠️ These rates were entered from documentation and have NOT been verified
   // against the live pricing page from this environment. Confirm before any
   // figure derived from them goes into COSTS.md.
+  // ⚠️ The 3.x rows carry the published 2.5-tier rates as a STAND-IN. The 3.x
+  // pricing page could not be reached from this environment, so these are an
+  // assumption, not a quote. They exist so cost accounting keeps working and
+  // relative comparisons stay meaningful; every figure derived from them is
+  // labelled NOTIONAL. Replace with real rates before COSTS.md.
+  {
+    model: "gemini-3.7-flash",
+    from: null,
+    to: null,
+    inputPerMTok: 0.3,
+    outputPerMTok: 2.5,
+    cacheReadMultiplier: 0.25,
+    notional: true,
+  },
+  {
+    model: "gemini-3.6-flash",
+    from: null,
+    to: null,
+    inputPerMTok: 0.3,
+    outputPerMTok: 2.5,
+    cacheReadMultiplier: 0.25,
+    notional: true,
+  },
+  {
+    model: "gemini-3.5-flash",
+    from: null,
+    to: null,
+    inputPerMTok: 0.3,
+    outputPerMTok: 2.5,
+    cacheReadMultiplier: 0.25,
+    notional: true,
+  },
+  {
+    model: "gemini-3.1-flash-lite",
+    from: null,
+    to: null,
+    inputPerMTok: 0.1,
+    outputPerMTok: 0.4,
+    cacheReadMultiplier: 0.25,
+    notional: true,
+  },
   {
     model: "gemini-2.5-flash",
     from: null,

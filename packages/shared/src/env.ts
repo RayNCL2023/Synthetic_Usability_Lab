@@ -44,8 +44,8 @@ export const ProviderEnv = z.object({
 /** Gemini-specific config. Free tier, so rate limiting is mandatory. */
 export const GeminiEnv = z.object({
   GEMINI_API_KEY: z.string().min(1),
-  SUL_GEMINI_LOOP_MODEL: z.string().default("gemini-2.5-flash"),
-  SUL_GEMINI_CLUSTER_MODEL: z.string().default("gemini-2.5-flash"),
+  SUL_GEMINI_LOOP_MODEL: z.string().default("gemini-3.7-flash"),
+  SUL_GEMINI_CLUSTER_MODEL: z.string().default("gemini-3.7-flash"),
   /**
    * Conservative until measured. Three persona workers share ONE bucket, so
    * this is the whole-run rate, not per worker.

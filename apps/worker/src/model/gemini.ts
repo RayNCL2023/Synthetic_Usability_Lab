@@ -174,23 +174,37 @@ export class GeminiModelClient implements ModelClient {
         return await fn();
       } catch (err) {
         const status = statusOf(err);
-        if (status !== 429) throw err;
 
-        const e = err as HttpishError;
-        const cls = classifyRateLimit(429, e.message ?? "", e.headers);
+        // 503 UNAVAILABLE ("high demand") and the other transient 5xx are
+        // common on a free tier and are exactly as recoverable as a
+        // per-minute 429 — observed killing a real run at step 1. Retrying
+        // only 429 leaves the run at the mercy of ordinary provider load.
+        const transient5xx =
+          status !== undefined && status >= 500 && status < 600;
 
-        if (cls.kind === "daily") {
-          // Backoff cannot recover a daily cap. Retrying would spend the run's
-          // entire wall-clock budget and still fail.
-          throw new DailyQuotaExhaustedError(cls.detail);
+        if (status !== 429 && !transient5xx) throw err;
+
+        let wait: number;
+        if (status === 429) {
+          const e = err as HttpishError;
+          const cls = classifyRateLimit(429, e.message ?? "", e.headers);
+          if (cls.kind === "daily") {
+            // Backoff cannot recover a daily cap. Retrying would spend the
+            // run's entire wall-clock budget and still fail.
+            throw new DailyQuotaExhaustedError(cls.detail);
+          }
+          attempt++;
+          if (attempt >= DEFAULT_BACKOFF.maxAttempts) throw err;
+          wait = cls.retryAfterMs ?? backoffDelayMs(attempt);
+        } else {
+          attempt++;
+          if (attempt >= DEFAULT_BACKOFF.maxAttempts) throw err;
+          wait = backoffDelayMs(attempt);
         }
 
-        attempt++;
-        if (attempt >= DEFAULT_BACKOFF.maxAttempts) throw err;
-
-        const wait = cls.retryAfterMs ?? backoffDelayMs(attempt);
         // Stop the whole bucket, not just this caller — the other persona
-        // workers are about to fire into a limit we already know we are over.
+        // workers are about to fire into a provider we already know is
+        // refusing traffic.
         this.opts.limiter.penalise(wait);
         await sleep(wait);
       }

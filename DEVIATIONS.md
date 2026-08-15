@@ -326,3 +326,72 @@ Boot fails loudly and names the variable, as designed.
 Everything up to the HTTP boundary is built and tested: provider switch, schema
 conversion, finishReason mapping, usage mapping, shared token bucket, 429
 classification, backoff. **No real numbers exist for this project yet.**
+
+---
+
+## Task 2 — first real run
+
+### G7 — `gemini-2.5-flash` is retired for new keys; model pinned to a working one
+
+`generateContent` on `gemini-2.5-flash` returns 404: "no longer available to new
+users". It still appears in `models.list()`, so the list is not a reliable
+availability signal — it must be probed. `gemini-3.7-flash` was pinned first,
+then changed again (below). Loop now runs `gemini-3.1-flash-lite`, clustering
+`gemini-3.5-flash`.
+
+### G8 — Only 429 was retried; a 503 killed the first real run at step 1
+
+The retry wrapper classified 429s carefully and let everything else through.
+Gemini's free tier returns `503 UNAVAILABLE` ("high demand") readily, and it is
+exactly as transient as a per-minute 429. The first real run produced two good
+grounded observations and then died on one.
+
+Transient 5xx now retries with the same jittered backoff and bucket penalty,
+while staying outside the quota classifier — a 503 is not a quota signal and
+must not be mistaken for a daily cap.
+
+### G9 — `gemini-3.7-flash` was too overloaded to complete a run
+
+Even with 5xx retries, 3.7-flash exhausted all five attempts on 503s (79s of
+backoff). Switched the loop to `gemini-3.1-flash-lite`, which completed first
+try.
+
+This is not purely a workaround. The probe showed flash-lite reports **no
+thinking tokens at all**, where `gemini-flash-latest` spent 93 thinking tokens to
+produce 1 output token. Per the spec's own reasoning — per-step work is bounded
+selection against a six-way enum, not reasoning — flash-lite is arguably the
+correct choice for the loop regardless of load.
+
+### G2 CONFIRMED LIVE — thinking tokens are excluded from `candidatesTokenCount`
+
+The probe returned, verbatim:
+
+```json
+{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":100,
+ "thoughtsTokenCount":93}
+```
+
+`6 + 1 + 93 = 100`. Thinking is a separate addend, exactly as the SDK types
+documented. Had `candidatesTokenCount` been mapped straight onto `outputTokens`,
+output would have been undercounted by 98% on that call.
+
+### First real numbers
+
+Run `a31e19ef-a4ad-490b-a5f3-e56be69f23c8`, procurement persona,
+`fixtures/badsite`, goal "Find pricing and start a trial":
+
+| Metric | Value |
+|---|---|
+| Steps | 4 |
+| Model calls | 4 |
+| Grounding rejection rate | **0.0%** (0/4) |
+| Schema rejection rate | **0.0%** (0/4) |
+| Observations | 4 produced, 0 dropped as ungrounded |
+| Tokens | 8,177 in / 990 out |
+| Cost | **$0.0012 NOTIONAL** (free tier, unverified published rates) |
+| Wall clock | **26s** total, ~17s of it model latency |
+| Outcome | `gave_up` |
+
+Caveats worth keeping in view: this is ONE run of ONE persona. A 0% rejection
+rate over four decisions is encouraging but not yet evidence. Recall against the
+planted-defect list is not measured here — that is `pnpm eval`'s job.
