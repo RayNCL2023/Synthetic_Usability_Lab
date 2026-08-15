@@ -18,7 +18,8 @@
     "fixture": "pnpm --filter @sul/worker fixture",
     "crawl": "pnpm --filter @sul/worker crawl",
     "run:cli": "pnpm --filter @sul/worker run:cli",
-    "eval": "pnpm --filter @sul/worker eval"
+    "eval": "pnpm --filter @sul/worker eval",
+    "verify": "pnpm --filter @sul/worker verify"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

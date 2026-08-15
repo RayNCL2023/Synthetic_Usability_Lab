@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { z } from "zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z } from "zod/v4";
 import {
   CATEGORIES,
   DecisionSchema,
@@ -57,6 +58,30 @@ const ClusterResponseSchema = z.object({
   ),
 });
 
+/**
+ * Output formats derived from the shared Zod schemas — one definition feeding
+ * the API request, the local validator, and the TS types.
+ *
+ * VERIFIED BEHAVIOUR, and it matters: `zodOutputFormat` runs the schema through
+ * the SDK's `transformJSONSchema`, which keeps only an allowlist of keywords.
+ * `enum` is NOT on that allowlist — it is demoted into the property's
+ * `description` as prose, e.g.
+ *
+ *   "type": { "type": "string", "description": "{enum: [\"click\", ...]}" }
+ *
+ * So the model is TOLD the permitted values but generation is not CONSTRAINED
+ * to them. Every enum we rely on — action type, severity, category, direction,
+ * outcome — is advisory at the API boundary.
+ *
+ * The consequence is that `DecisionSchema.safeParse` below is not a belt-and-
+ * braces double check; it is the only thing actually enforcing the enums, and
+ * the parse-failure retry path is load-bearing rather than theoretical.
+ * `.nullable()` likewise becomes `anyOf: [{type:"string"},{type:"null"}]`
+ * rather than a `type` array.
+ */
+const DECISION_FORMAT = zodOutputFormat(DecisionSchema);
+const CLUSTER_FORMAT = zodOutputFormat(ClusterResponseSchema);
+
 function toStopReason(raw: string | null | undefined): StopReason {
   switch (raw) {
     case "end_turn":
@@ -86,103 +111,6 @@ function firstText(content: Anthropic.ContentBlock[]): string | null {
   }
   return null;
 }
-
-/** JSON Schema for the decision object. Kept in sync with DecisionSchema. */
-const DECISION_JSON_SCHEMA = {
-  type: "object",
-  properties: {
-    narration: { type: "string" },
-    reasoning: { type: "string" },
-    action: {
-      type: "object",
-      properties: {
-        type: {
-          type: "string",
-          enum: ["click", "type", "scroll", "go_back", "wait", "finish"],
-        },
-        ref: { type: ["string", "null"] },
-        text: { type: ["string", "null"] },
-        direction: { type: ["string", "null"], enum: ["down", "up", null] },
-        outcome: {
-          type: ["string", "null"],
-          enum: ["goal_achieved", "gave_up", null],
-        },
-      },
-      required: ["type", "ref", "text", "direction", "outcome"],
-      additionalProperties: false,
-    },
-    observations: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          severity: { type: "string", enum: ["blocker", "major", "minor", "nitpick"] },
-          category: {
-            type: "string",
-            enum: [
-              "navigation",
-              "clarity",
-              "trust",
-              "accessibility",
-              "performance",
-              "forms",
-              "content",
-            ],
-          },
-          ref: { type: "string" },
-          quote: { type: "string" },
-          description: { type: "string" },
-        },
-        required: ["severity", "category", "ref", "quote", "description"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["narration", "reasoning", "action", "observations"],
-  additionalProperties: false,
-} as const;
-
-const CLUSTER_JSON_SCHEMA = {
-  type: "object",
-  properties: {
-    issues: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          description: { type: "string" },
-          recommendation: { type: "string" },
-          category: {
-            type: "string",
-            enum: [
-              "navigation",
-              "clarity",
-              "trust",
-              "accessibility",
-              "performance",
-              "forms",
-              "content",
-            ],
-          },
-          severity: { type: "string", enum: ["blocker", "major", "minor", "nitpick"] },
-          observationIds: { type: "array", items: { type: "string" } },
-        },
-        required: [
-          "title",
-          "description",
-          "recommendation",
-          "category",
-          "severity",
-          "observationIds",
-        ],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["issues"],
-  additionalProperties: false,
-} as const;
 
 export class AnthropicModelClient implements ModelClient {
   private readonly client: Anthropic;
@@ -254,7 +182,7 @@ export class AnthropicModelClient implements ModelClient {
       // Explicit: both current models default to `high` and adaptive thinking.
       output_config: {
         effort: this.opts.loopEffort,
-        format: { type: "json_schema", schema: DECISION_JSON_SCHEMA },
+        format: DECISION_FORMAT,
       },
       system: [
         {
@@ -266,7 +194,7 @@ export class AnthropicModelClient implements ModelClient {
         },
       ],
       messages: [{ role: "user", content: userContent }],
-    } as Anthropic.MessageCreateParamsNonStreaming);
+    });
 
     const stopReason = toStopReason(response.stop_reason);
     const usage = usageFrom(response.usage);
@@ -327,7 +255,7 @@ export class AnthropicModelClient implements ModelClient {
       max_tokens: this.opts.clusterMaxTokens,
       output_config: {
         effort: this.opts.clusterEffort,
-        format: { type: "json_schema", schema: CLUSTER_JSON_SCHEMA },
+        format: CLUSTER_FORMAT,
       },
       system: [
         {
@@ -348,7 +276,7 @@ export class AnthropicModelClient implements ModelClient {
           ].join("\n"),
         },
       ],
-    } as Anthropic.MessageCreateParamsNonStreaming);
+    });
 
     const stopReason = toStopReason(response.stop_reason);
     const usage = usageFrom(response.usage);

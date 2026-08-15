@@ -10,6 +10,105 @@ Deviations agreed *before* the spec was written are recorded in the spec's own
 
 ---
 
+## Contract verification pass (pre-Checkpoint B)
+
+### V1 — SDK was pinned 49 minor versions stale, hiding `output_config` entirely
+
+**What happened:** `@anthropic-ai/sdk` was specified as `^0.68.0`. Caret on a
+`0.x` version pins the *minor*, so it resolved to exactly 0.68.0 and never
+moved. Latest is 0.117.1.
+
+**Why it mattered:** 0.68.0 contains no `output_config`, no `OutputConfig.effort`,
+and no `zodOutputFormat` — the three things the spec's model layer is built on.
+The code typechecked only because the request was cast
+`as Anthropic.MessageCreateParamsNonStreaming`, which silenced the very error
+that would have caught this on day one.
+
+**Fixed:** pinned to an exact `0.117.1`, and the cast removed so the request
+shape is type-checked natively. `output_config: { effort, format }` and
+`cache_control: { ttl }` now typecheck without assertion.
+
+**Lesson worth keeping:** a cast on an API request object is not a convenience,
+it is a suppressed contract check.
+
+### V2 — `zodOutputFormat` demotes every `enum` to prose; local `safeParse` is the only enforcement
+
+**Verified empirically** (not by reading docs) by running `zodOutputFormat` over
+a miniature of `DecisionSchema` and dumping the emitted JSON Schema.
+
+The SDK's `transformJSONSchema` keeps only an allowlist of keywords. `enum` is
+not on it, so it is moved into the property's `description`:
+
+```json
+"type": { "type": "string", "description": "{enum: [\"click\",\"type\", ...]}" }
+```
+
+The model is therefore **told** the permitted values but generation is **not
+constrained** to them. This affects every enum we rely on: action type,
+severity, category, direction, outcome.
+
+Also observed: `.nullable()` renders as `anyOf: [{type:"string"},{type:"null"}]`,
+**not** the `type: ["string","null"]` form the previous hand-written schema
+used; `additionalProperties` is forced to `false`; `minItems` survives only for
+values 0 and 1; unsupported numeric/string constraints are likewise demoted into
+`description`.
+
+**Confirmed the safety net holds:** `DecisionSchema.safeParse` rejects both an
+out-of-enum `action.type` and an out-of-enum `observations[].severity`, with
+messages naming the offending path and the permitted values.
+
+**Consequence for the design:** the parse-failure retry path is load-bearing,
+not defensive. It is the only thing standing between an unconstrained enum and
+a bad action reaching the browser. Documented at the definition site.
+
+### V3 — Hand-written JSON Schema removed in favour of the single definition
+
+The spec said one Zod definition should feed the API, the validator, and the TS
+types. Checkpoint A shipped a **second**, hand-maintained JSON Schema in
+`anthropic.ts` because the pinned SDK had no `zodOutputFormat` — a silent
+violation of the spec's stated principle, and a copy free to drift. Now derived
+from `DecisionSchema` / `ClusterResponseSchema` via `zodOutputFormat`.
+
+Required migrating `packages/shared` from `zod` to `zod/v4` (the helper is
+v4-only). 37 tests pass unchanged after the migration.
+
+### V4 — `usage` carries two fields we were not reading
+
+Confirmed against the shipped 0.117.1 types. Every field `computeCost` reads
+exists under the assumed name — `input_tokens`, `output_tokens`,
+`cache_creation_input_tokens`, `cache_read_input_tokens` — with the latter two
+typed `number | null`, which the code already handles via `?? 0`.
+
+Two additions worth noting:
+
+- **`cache_creation: { ephemeral_5m_input_tokens, ephemeral_1h_input_tokens }`**
+  — a per-TTL breakdown. Our cost model applies a single configured TTL
+  multiplier, which is correct because we send exactly one TTL per request, but
+  the breakdown is a stronger cross-check if we ever vary it.
+- **`output_tokens_details.thinking_tokens`** — the docs on the type state that
+  `output_tokens` "remains the inclusive, authoritative total used for billing",
+  so thinking tokens are already inside the number we cost. No double-count, and
+  no correction needed. `thinking_tokens` is observability only.
+
+**Still unverified at runtime** — see the blocked checks below.
+
+### V5 — BLOCKED: three checks need a live API key
+
+`ANTHROPIC_API_KEY` is empty in `.env` (line 29), unset in the process
+environment, and there is no `ant` profile. The following are implemented in
+`pnpm verify` and will run the moment a key exists:
+
+1. A real single-persona run against `fixtures/badsite`, non-mock, 5 steps.
+2. The raw `usage` block dumped verbatim from a live response.
+3. `effort` accepted at runtime, and whether `output_tokens_details` is
+   populated in practice.
+4. A deliberate `max_tokens: 16` truncation proving `stop_reason` fires.
+
+No cost or wall-clock figure is reported for a real run, because none has
+occurred.
+
+---
+
 ## Checkpoint A
 
 ### A1 — `sharp` dropped; screenshots downscaled via `deviceScaleFactor`
