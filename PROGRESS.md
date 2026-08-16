@@ -191,3 +191,90 @@ Anthropic path has **never been run end to end**.
 - Copy-to-markdown on the report.
 - `layoutId` thumbnail→hero morph in the filmstrip.
 - `/runs/:id/debug` token breakdown view.
+
+---
+
+## Standalone demo + empty-rate attack
+
+### 1. `/demo/[slug]` is now genuinely standalone
+
+**It was not before.** The route fetched `${API}/demo/:slug` and
+`${API}/runs/:id/events` from Fastify — a hard runtime dependency on the API,
+Postgres, and S3 presigning. Replaced with `apps/web/src/lib/seeded.ts`, which
+reads the committed JSON fixtures directly and rebuilds the exact shape the API
+returned, so the same components render both paths and the demo still cannot
+drift from the live view.
+
+**Proof, from a build with every environment variable unset:**
+
+```
+Route (app)
+┌ ○ /                                    ← Static
+├ ● /demo/[slug]                         ← SSG
+├   ├ /demo/hacker-news
+├   ├ /demo/fixture-badsite
+├   ├ /demo/gnu-org
+├   └ /demo/cern-info
+└ ƒ /runs/[id]                           ← Dynamic (live only)
+```
+
+The finding text is baked into `.next/server/app/demo/hacker-news.html` on disk.
+No API, no worker, no Postgres, no Redis, no S3.
+
+Live runs are behind `LIVE_RUNS_ENABLED`, which requires **both**
+`NEXT_PUBLIC_ENABLE_LIVE_RUNS=true` and `NEXT_PUBLIC_API_URL`. With neither set
+the form is not rendered at all rather than posting into the void. The
+`http://localhost:3001` fallback default was removed — an unset API URL now
+means "no backend", not "try localhost".
+
+Hacker News is first in `SEEDED_SLUGS`. Cards state their outcome up front,
+including "no findings" — more trustworthy than letting a visitor discover it.
+
+**Surprise:** the build failed at first because webpack cannot resolve
+TypeScript's explicit `.js` import specifiers in `packages/shared`. Fixed with
+`resolve.extensionAlias` in `next.config.mjs`.
+
+### 2. Empty-run rate: 60% → 16.7%
+
+**Baseline (measured):** of 5 real fan-out runs, 3 produced no issues — **60%
+empty**. (The raw run table also contains single-persona CLI and mock runs that
+never cluster; those are excluded, and counting them would have made the
+baseline look artificially worse.)
+
+**Changes, both on task difficulty only.** The observation prompt and the
+severity threshold were not touched.
+
+- **Goal presets rewritten as compound journeys** in `packages/shared/goals.ts`,
+  each with a NAVIGATE → EXTRACT → **VERIFY** shape. "Find the price" is one
+  lookup; "find the price, then confirm what it excludes and what happens when
+  you stop paying" forces a second traversal, and the second traversal is where
+  real sites hide their friction.
+- **Step caps raised** where they were binding. Procurement was the only persona
+  actually hitting its cap.
+
+**After (measured), 6 real runs:**
+
+| Site | Issues | Wall clock |
+|---|---|---|
+| fixture badsite | 2 | 255s |
+| news.ycombinator.com | 2 | 82s |
+| gnu.org | **0** | 81s |
+| python.org | 2 | 110s |
+| debian.org | 1 | 92s |
+| info.cern.ch | 2 | 57s |
+
+**1 of 6 empty — 16.7%**, down from 60%. Mean wall clock 113s.
+
+**One run breached the 4-minute ceiling** (fixture site, 255s), so per the
+standing rule the step cap was **reduced rather than concurrency raised**:
+procurement 8 → 12 → **10**. The fixture site is the pathological case — its
+planted focus-trapping modal makes every click burn the full 8s actionability
+timeout — but the ceiling binds regardless of cause.
+
+**Honest caveat:** the post-change measurement uses different *sites* as well as
+different goals, so site difficulty is confounded with goal difficulty. The
+gnu.org run is the controlled comparison — same site, same 3 personas, harder
+goal — and it still produced 0 issues. So the goal rewrite is not sufficient on
+its own for every site; it moved the aggregate, not the floor.
+
+The rate limiter remains **verified, not stressed** — no fourth persona has run.

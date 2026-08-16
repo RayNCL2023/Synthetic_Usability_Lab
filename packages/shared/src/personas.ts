@@ -94,7 +94,9 @@ export const PERSONAS: readonly Persona[] = [
       viewport: { width: 390, height: 844 },
       isMobile: true,
       networkLatencyMs: 400,
-      maxSteps: 5,
+      // Still the lowest by design — impatience is this persona's character,
+      // and it gives up voluntarily long before the cap binds.
+      maxSteps: 6,
       receivesScreenshot: true,
     },
     systemPrompt: `
@@ -124,7 +126,7 @@ How you behave:
       viewport: { width: 1280, height: 800 },
       isMobile: false,
       networkLatencyMs: 0,
-      maxSteps: 7,
+      maxSteps: 9,
       // The architectural difference: no screenshot, ever.
       receivesScreenshot: false,
     },
@@ -158,8 +160,11 @@ How you behave:
     harness: {
       viewport: { width: 1440, height: 900 },
       isMobile: false,
+      // 8 -> 12 -> 10. Raised because this persona was capping mid-journey on
+      // compound goals; then pulled back from 12 after a measured run hit 255s,
+      // over the 4-minute ceiling. The ceiling binds before the cap does.
       networkLatencyMs: 0,
-      maxSteps: 8,
+      maxSteps: 10,
       receivesScreenshot: true,
     },
     systemPrompt: `

@@ -3,12 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { API, PERSONA_META } from "@/lib/api";
+import { GOAL_PRESETS, DEFAULT_GOAL } from "@sul/shared";
 
-const PRESET_GOALS = [
-  "Find pricing and start a trial",
-  "Find out how to contact support",
-  "Find the security and compliance information",
-];
 
 /**
  * Run setup.
@@ -21,7 +17,7 @@ const PRESET_GOALS = [
 export function RunForm() {
   const router = useRouter();
   const [url, setUrl] = useState("");
-  const [goal, setGoal] = useState(PRESET_GOALS[0]!);
+  const [goal, setGoal] = useState(DEFAULT_GOAL);
   const [passcode, setPasscode] = useState("");
   const [authorised, setAuthorised] = useState(false);
   const [keys, setKeys] = useState<string[]>(Object.keys(PERSONA_META));
@@ -92,26 +88,27 @@ export function RunForm() {
 
       <label className="flex flex-col gap-1.5">
         <span className="readout">goal</span>
-        <input
-          type="text"
+        <textarea
           required
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
-          className="border border-hairline bg-ink px-3 py-2 text-sm text-fg focus:border-minor focus:outline-none"
+          rows={3}
+          className="resize-none border border-hairline bg-ink px-3 py-2 text-sm leading-snug text-fg focus:border-minor focus:outline-none"
         />
         <div className="mt-1 flex flex-wrap gap-1.5">
-          {PRESET_GOALS.map((g) => (
+          {GOAL_PRESETS.map((g) => (
             <button
-              key={g}
+              key={g.label}
               type="button"
-              onClick={() => setGoal(g)}
+              onClick={() => setGoal(g.goal)}
+              title={g.probes}
               className={`readout border px-2 py-1 text-[0.6rem] transition-colors ${
-                goal === g
+                goal === g.goal
                   ? "border-minor/50 text-minor"
                   : "border-hairline text-fg-mute hover:text-fg-dim"
               }`}
             >
-              {g}
+              {g.label}
             </button>
           ))}
         </div>

@@ -1,22 +1,18 @@
 import { notFound } from "next/navigation";
-import { API, type RunPayload } from "@/lib/api";
+import Link from "next/link";
 import { Masthead } from "@/components/Chrome";
 import { RunView } from "@/components/RunView";
-import Link from "next/link";
+import { SEEDED_SLUGS, isSeededSlug, loadSeededRun } from "@/lib/seeded";
 
-export const dynamic = "force-dynamic";
-
-async function load(slug: string) {
-  const [runRes] = await Promise.all([
-    fetch(`${API}/demo/${slug}`, { cache: "no-store" }),
-  ]);
-  if (!runRes.ok) return null;
-  const data = (await runRes.json()) as RunPayload;
-  const evRes = await fetch(`${API}/runs/${data.run.id}/events`, {
-    cache: "no-store",
-  });
-  const events = evRes.ok ? await evRes.json() : [];
-  return { data, events };
+/**
+ * Seeded replay.
+ *
+ * Statically generated from the committed fixtures — no API, no worker, no
+ * database, no object store. This route works on a bare Vercel deployment with
+ * no environment variables set at all.
+ */
+export function generateStaticParams() {
+  return SEEDED_SLUGS.map((slug) => ({ slug }));
 }
 
 export default async function DemoPage({
@@ -25,8 +21,9 @@ export default async function DemoPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const loaded = await load(slug);
-  if (!loaded) notFound();
+  if (!isSeededSlug(slug)) notFound();
+
+  const { data, events } = await loadSeededRun(slug);
 
   return (
     <>
@@ -42,7 +39,7 @@ export default async function DemoPage({
           </>
         }
       />
-      <RunView data={loaded.data} events={loaded.events} replaySpeed={3} />
+      <RunView data={data} events={events} replaySpeed={3} />
     </>
   );
 }

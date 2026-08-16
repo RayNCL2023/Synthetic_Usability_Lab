@@ -5,3 +5,4 @@ export * from "./schemas/events.js";
 export * from "./personas.js";
 export * from "./pricing.js";
 export * from "./env.js";
+export * from "./goals.js";
