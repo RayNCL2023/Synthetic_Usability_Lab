@@ -278,3 +278,56 @@ goal — and it still produced 0 issues. So the goal rewrite is not sufficient o
 its own for every site; it moved the aggregate, not the floor.
 
 The rate limiter remains **verified, not stressed** — no fourth persona has run.
+
+---
+
+## `pnpm eval`
+
+**Landed:** the scoring harness, sweeping model × snapshot node cap against
+`fixtures/badsite/defects.json`, writing `eval/results.json`.
+
+Matching is keyword-based per defect, deliberately. An LLM judge would score its
+own model family's output; fuzzy matching inflates recall by rewarding
+vocabulary overlap. A miss under these matchers is a real miss.
+
+**Measured, two cells before the daily quota fired:**
+
+| Cell | Recall | Ground | Schema | Cost | Wall |
+|---|---|---|---|---|---|
+| flash-lite @ 60 nodes | **50%** (4/8) | 0% | 0% | $0.0176 | 186s |
+| flash-lite @ 120 nodes | **63%** (5/8) | 0% | 0% | $0.0132 | 198s |
+
+**The node cap is a recall lever** — doubling it moved recall 50% → 63%.
+Snapshot truncation was hiding defects the model would otherwise have found.
+That argues for raising the cap, and it is the first evidence the truncation
+strategy has a measurable cost rather than being free.
+
+**Surprises**
+
+- **The daily quota fired mid-sweep**, on cell 3 of 4. The fail-fast path worked
+  exactly as designed: recognised a daily cap as unrecoverable and stopped
+  rather than spending the wall-clock budget on backoff. Good to have that
+  confirmed against the real provider rather than only in a unit test.
+- **It also exposed a real harness bug**: results were written only at the end,
+  so the abort discarded two completed cells — hours of measurement. Now every
+  cell is persisted as it completes and the JSON records `complete: false` plus
+  `abortedBy`.
+
+**State of the committed artifact, stated plainly**
+
+`eval/results.json` currently contains **zero cells**. The two measured cells
+above come from console output of the run that was killed *before* the
+partial-write fix existed. The artifact is left honestly empty rather than
+back-filled by hand — a results file that was typed rather than generated is
+worse than no results file.
+
+These are also **HOST numbers**, and the harness marks them
+`"trustworthy": false` for exactly that reason. They must not be compared
+against a future container run.
+
+**Deferred**
+
+- Re-running the sweep in `docker/eval.Dockerfile` once the quota resets. That
+  is the run whose numbers are worth committing.
+- `eval/adjudications.json` is empty, so false-positive rate is a floor of 0%
+  rather than a measurement. It needs one human pass.

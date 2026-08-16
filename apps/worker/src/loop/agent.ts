@@ -9,7 +9,7 @@ import {
   type PersonaOutcome,
   type Snapshot,
 } from "@sul/shared";
-import { buildSnapshot } from "../browser/snapshot.js";
+import { DEFAULT_SNAPSHOT_OPTIONS, buildSnapshot } from "../browser/snapshot.js";
 import { actionLabel, executeAction } from "../browser/actions.js";
 import type { ModelClient } from "../model/client.js";
 import {
@@ -63,6 +63,8 @@ export interface AgentLoopOptions {
   model: ModelClient;
   budget: RunBudget;
   stepTimeoutMs: number;
+  /** Overrides the snapshot node cap. Used by the eval sweep. */
+  snapshotMaxNodes?: number;
   /** Called after each step so the caller can persist and emit events. */
   onStep?: (step: StepRecord) => Promise<void>;
   onStatus?: (label: string) => Promise<void>;
@@ -120,7 +122,13 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentRunResu
 
     await opts.onStatus?.("reading the page");
 
-    const snapshot = await buildSnapshot(page, stepIndex);
+    const snapshot = await buildSnapshot(
+      page,
+      stepIndex,
+      opts.snapshotMaxNodes
+        ? { ...DEFAULT_SNAPSHOT_OPTIONS, maxNodes: opts.snapshotMaxNodes }
+        : DEFAULT_SNAPSHOT_OPTIONS,
+    );
     const screenshot = persona.harness.receivesScreenshot
       ? await page.screenshot({ type: "jpeg", quality: 70 }).catch(() => null)
       : null;

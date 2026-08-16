@@ -12,4 +12,5 @@ COPY packages/shared/package.json packages/shared/
 COPY apps/worker/package.json apps/worker/
 RUN pnpm install --frozen-lockfile
 COPY . .
+ENV SUL_EVAL_CONTAINER=true
 CMD ["pnpm", "eval"]

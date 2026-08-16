@@ -127,17 +127,55 @@ especially — which moves bounding boxes and therefore pin coordinates. For a
 product whose output *is* annotated screenshots, that is not cosmetic. Host runs
 are dev-only.
 
-## Deploying
+## Deploying the demo to Vercel
 
-Fly.io for `api` and `worker` (both need Chromium and real memory; serverless is
-a poor fit), Neon or Fly Postgres, Upstash Redis, Cloudflare R2 for screenshots.
-Web on Vercel or Fly.
+The demo is standalone. `/demo/[slug]` reads the committed JSON fixtures and is
+prerendered at build time — **no API, worker, Postgres, Redis, or S3 at
+runtime**, and **no environment variables at all**.
+
+### Click by click
+
+1. Push this repo to GitHub.
+2. Go to <https://vercel.com/new> and click **Import** next to the repository.
+3. On the configure screen, **change nothing**:
+   - Framework Preset → `Next.js` (detected)
+   - Root Directory → `./` (leave it — `vercel.json` at the repo root points the
+     build at `apps/web`)
+   - Build and Output Settings → leave collapsed; `vercel.json` supplies them
+   - Environment Variables → **add none**
+4. Click **Deploy**.
+
+That is the whole procedure. The build runs
+`pnpm install --frozen-lockfile && pnpm --filter @sul/web build`, and you get
+the landing page plus four prerendered replays. Hacker News is first.
+
+Verify it worked: the deployment's `/` should list four recorded runs, and
+`/demo/hacker-news` should replay with screenshots. If the landing page shows a
+run form, live runs were switched on by accident — see below.
+
+### Turning live runs on later
+
+Live runs are off unless **both** of these are set in Vercel → Settings →
+Environment Variables:
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_ENABLE_LIVE_RUNS` | `true` |
+| `NEXT_PUBLIC_API_URL` | your deployed API's URL |
+
+With either missing, the form is not rendered at all rather than posting into
+the void. Redeploy after adding them.
+
+### The backend, when you want it
+
+Fly.io for `api` and `worker` — both need Chromium and real memory, so
+serverless is a poor fit — plus Neon or Fly Postgres, Upstash Redis, and
+Cloudflare R2.
 
 ```bash
 fly deploy -c fly.api.toml
 fly deploy -c fly.worker.toml
 ```
 
-The demo route is intentionally the front door: seeded runs embed their
-screenshots as data URIs, so `/demo/[slug]` renders with no key, no worker, no
-bucket, and no live browsing.
+`auto_stop_machines` is deliberately off on the worker: a queued job with no
+worker awake would sit until something else woke it.

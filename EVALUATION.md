@@ -93,7 +93,9 @@ reproducible from the committed seeded fixtures.
 | Rate-limit errors under concurrency | **0** | same run, ~6.4 RPM against a 10 RPM budget |
 | Cost, 3-persona run | **1.95¢ notional** | same run, 37,373 tokens |
 | Issues found, fixture site | **3** from 12 observations | same run |
-| Runs finding nothing | **2 of 4** real runs | seeded fixtures |
+| Runs finding nothing | **1 of 6** real runs (16.7%) | post-goal-rewrite; was 3 of 5 (60%) before |
+| Recall, flash-lite @ 60-node cap | **50%** (4/8 planted defects) | `pnpm eval`, host run |
+| Recall, flash-lite @ 120-node cap | **63%** (5/8 planted defects) | `pnpm eval`, host run |
 
 ### Estimated, unverified, or not yet measured
 
@@ -101,7 +103,7 @@ Marked so nobody quotes them as findings:
 
 | Item | Status |
 |---|---|
-| **Recall against the planted-defect list** | **NOT MEASURED.** `pnpm eval` is not yet written. The fixture run surfaced 3 of 8 planted defects, but that is one spot check, not a recall figure. |
+| **Recall against the planted-defect list** | **MEASURED, but on the host rather than in the pinned container — see below.** |
 | **False-positive rate** | **NOT MEASURED.** No adjudication has been performed. |
 | **Gemini pricing rates** | **UNVERIFIED.** Entered from documentation; the pricing page was unreachable from the build environment. Every derived figure is labelled NOTIONAL. |
 | **Cost per run in real money** | **£0 actually spent.** Free tier throughout. The cent figures are published paid rates applied to measured tokens. |
@@ -130,3 +132,55 @@ doing real work rather than producing three flavours of the same output.
 chosen partly because they are detectable. Recall measured against it is an
 upper bound and should be reported as such. A fair evaluation needs sites
 nobody involved has seen.
+
+---
+
+## The eval harness, and the state of its numbers
+
+`pnpm eval` exists. It runs the full pipeline against the fixture site, scores
+against `fixtures/badsite/defects.json`, and sweeps model × snapshot node cap,
+writing `eval/results.json`.
+
+**Matching is deliberately conservative.** Each planted defect has an explicit
+set of keyword matchers that a genuine detection must satisfy. An LLM judge was
+rejected because it would be scoring its own model family's output; fuzzy string
+matching was rejected because it inflates recall by rewarding vocabulary
+overlap. A miss under these matchers is a real miss.
+
+### What has actually been measured
+
+Two sweep cells completed before the provider's **daily quota** fired:
+
+| Cell | Recall | Grounding rejection | Schema rejection | Cost | Wall clock |
+|---|---|---|---|---|---|
+| `gemini-3.1-flash-lite` @ 60 nodes | **50%** (4/8) | 0% | 0% | $0.0176 | 186s |
+| `gemini-3.1-flash-lite` @ 120 nodes | **63%** (5/8) | 0% | 0% | $0.0132 | 198s |
+
+**The node cap is a recall lever.** Doubling it moved recall from 50% to 63% —
+snapshot truncation was hiding defects the model would otherwise have found.
+That is the first evidence that the truncation strategy has a measurable cost,
+and it argues for raising the cap rather than tightening it.
+
+### Three caveats that matter more than the numbers
+
+1. **These are HOST numbers, not container numbers.** The harness marks its own
+   output `"trustworthy": false` when `SUL_EVAL_CONTAINER` is unset, and it did
+   so here. Host and container Chromium render differently, which moves bounding
+   boxes and can move recall. **Do not compare these against a future container
+   run.** They are indicative only.
+2. **`eval/results.json` currently contains zero cells.** The two measured cells
+   above come from console output of a sweep that was killed by the daily quota
+   *before* the partial-write fix existed. The committed artifact is honest about
+   being empty rather than being back-filled by hand.
+3. **False-positive rate is still not measured.** `eval/adjudications.json` is
+   empty, so every unmatched issue is reported as `unadjudicated` and the
+   false-positive figure is a floor of 0%, not a measurement. Adjudicating
+   requires a human verdict per issue, once, and the harness caches it.
+
+### The quota abort was itself a useful result
+
+The sweep died on cell 3 with `DailyQuotaExhaustedError`. That is the fail-fast
+path working exactly as designed — it recognised a daily cap as unrecoverable
+and stopped rather than spending the wall-clock budget on backoff that could not
+succeed. It also exposed a genuine harness bug: two completed cells were
+discarded because results were only written at the end. Fixed.
