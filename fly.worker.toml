@@ -1,0 +1,19 @@
+app = "sul-worker"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "docker/worker.Dockerfile"
+
+[env]
+  SUL_PROVIDER = "gemini"
+  SUL_HEADLESS = "true"
+
+# The worker holds a Chromium process per persona and runs three concurrently,
+# so it needs real memory. Scale-to-zero is deliberately OFF: a queued job with
+# no worker awake would sit until something else woke it.
+[[vm]]
+  size = "performance-2x"
+  memory = "4gb"
+
+[processes]
+  app = "pnpm --filter @sul/worker start"

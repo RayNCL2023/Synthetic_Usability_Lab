@@ -1,0 +1,28 @@
+app = "sul-api"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "docker/api.Dockerfile"
+
+[env]
+  PORT = "3001"
+  API_PORT = "3001"
+  SUL_PROVIDER = "gemini"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+# WebSockets need a long idle timeout — a run can stream for minutes with
+# quiet stretches while personas wait for rate-limit slots.
+[http_service.concurrency]
+  type = "connections"
+  hard_limit = 200
+  soft_limit = 150
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"

@@ -156,3 +156,38 @@ rather than lag you endure. There is no undifferentiated spinner anywhere.
 
 **Deferred:** copy-to-markdown on the report; the `layoutId` thumbnail→hero
 promotion (the filmstrip selects, but does not yet morph).
+
+---
+
+## Checkpoint C part 2 — deploy config and documentation
+
+**Landed:** four Dockerfiles (worker, api, web, eval), `fly.api.toml`,
+`fly.worker.toml`, and README / ARCHITECTURE / EVALUATION / COSTS.
+
+The worker and API Dockerfiles both start from
+`mcr.microsoft.com/playwright:v1.49.1-jammy`, pinned to the same version as
+`package.json`. The API needs it too, because preflight drives a browser.
+`docker/eval.Dockerfile` exists so `pnpm eval` can only ever run in that one
+rendering environment.
+
+Fly config sets `auto_stop_machines = false` on the worker deliberately: a
+queued job with no worker awake would sit until something else woke it.
+
+**Documentation discipline:** every number in COSTS.md and EVALUATION.md is
+tagged measured or estimated. The unflattering ones are stated plainly —
+recall is **not measured**, false-positive rate is **not measured**, the Gemini
+rates are **unverified**, the rate limiter was **never stressed**, and the
+Anthropic path has **never been run end to end**.
+
+**Not done — the honest list**
+
+- **`pnpm eval` is not written.** The harness Dockerfile and the ground-truth
+  manifest exist; the scoring script does not. This is the largest gap, and it
+  is why no recall number appears anywhere.
+- **Not deployed.** No Fly account was available in this environment. The
+  configs are written and the images build from a clean checkout, but nothing
+  has been pushed, so "a live run works end to end from the deployed URL"
+  remains unverified.
+- Copy-to-markdown on the report.
+- `layoutId` thumbnail→hero morph in the filmstrip.
+- `/runs/:id/debug` token breakdown view.
