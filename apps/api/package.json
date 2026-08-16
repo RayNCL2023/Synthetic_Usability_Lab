@@ -1,0 +1,21 @@
+{
+  "name": "@sul/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx --env-file-if-exists=../../.env watch src/index.ts",
+    "start": "tsx --env-file-if-exists=../../.env src/index.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@fastify/websocket": "^11.0.1",
+    "@sul/shared": "workspace:*",
+    "@sul/worker": "workspace:*",
+    "drizzle-orm": "^0.38.4",
+    "fastify": "^5.2.0",
+    "ioredis": "^5.4.1",
+    "zod": "^3.25.76"
+  }
+}
