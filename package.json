@@ -19,7 +19,8 @@
     "crawl": "pnpm --filter @sul/worker crawl",
     "run:cli": "pnpm --filter @sul/worker run:cli",
     "eval": "pnpm --filter @sul/worker eval",
-    "verify": "pnpm --filter @sul/worker verify"
+    "verify": "pnpm --filter @sul/worker verify",
+    "seed": "pnpm --filter @sul/worker seed"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

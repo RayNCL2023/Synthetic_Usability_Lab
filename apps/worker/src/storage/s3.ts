@@ -67,6 +67,12 @@ export async function uploadScreenshot(key: string, body: Buffer): Promise<strin
 }
 
 export async function presignScreenshot(key: string): Promise<string> {
+  // Seeded demo runs store the image inline as a data URI instead of a bucket
+  // key, so /demo/[slug] renders with no storage credentials at all. Passing
+  // it straight through is what keeps the demo a genuine fallback rather than
+  // one more service that can be down.
+  if (key.startsWith("data:")) return key;
+
   const { client: c, bucket, ttl } = getClient();
   return getSignedUrl(c, new GetObjectCommand({ Bucket: bucket, Key: key }), {
     expiresIn: ttl,

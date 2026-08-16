@@ -73,3 +73,48 @@ quote.
   single-worker deployment we ship; a multi-worker deployment needs this in
   Redis. Noted rather than pretended away.
 - `/runs/:id/debug` token breakdown view — not built.
+
+---
+
+## Seeded demo runs — captured and committed
+
+**Landed:** four complete real runs frozen into `fixtures/seeded-runs/`, with
+`pnpm seed export <runId> <slug>` / `pnpm seed import`. Round-trip verified:
+imported into a clean database and served from `/demo/:slug` with screenshots
+intact.
+
+| Slug | Site | Steps | Issues | Notes |
+|---|---|---|---|---|
+| `fixture-badsite` | bundled fixture | 14 | **3** | the showcase — blocker/major/minor, all planted defects |
+| `hacker-news` | news.ycombinator.com | 9 | **2** | real public site with real findings |
+| `gnu-org` | gnu.org | 7 | 0 | honest empty-report case |
+| `cern-info` | info.cern.ch | 8 | 0 | small site, quick journey |
+
+3.9 MB total. Screenshots are embedded as **data URIs**, not S3 keys, so a
+seeded run has no dependency on a bucket, a credential, or a worker. A demo
+that needs a live service isn't a fallback — it's one more thing that can be
+down.
+
+**The most interesting result is from Hacker News.** Both findings came from
+the **screen-reader persona alone** — "Generic 'here' link text lacks
+descriptive context" — while the impatient-mobile persona achieved the goal and
+saw nothing. That is precisely the product's pitch demonstrating itself: the
+persona with a genuinely different architecture (snapshot only, no screenshot)
+surfaced something the sighted personas could not.
+
+**Surprises**
+
+- **Two of four runs found nothing at all**, on well-built sites with easy
+  goals. The personas correctly declined to invent friction — the spec's "a step
+  with no friction should produce none" holding under real conditions. But it
+  means the empty-report state is not a defensive edge case; it is roughly half
+  of real runs. It is kept as a seeded demo deliberately, so the empty state has
+  to be designed rather than discovered.
+- **Goal difficulty dominates output.** "Find out what this organisation does"
+  finished in 1 step with zero findings; "find the exact GPLv3 text and how to
+  report a violation" produced a real journey. The goal is a bigger lever on
+  result quality than the persona is.
+- **The abuse gating blocked my own seeding run** at 3/hour. Working as
+  designed; raised locally via config rather than code.
+
+**Deferred:** `pnpm eval` recall scoring against the planted-defect manifest.
