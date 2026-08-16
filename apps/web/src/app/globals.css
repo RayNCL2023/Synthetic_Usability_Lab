@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Synthetic Usability Lab — design tokens
+
+   The metaphor is a critical apparatus: a claim, and the evidence pinned to it.
+   The housing is dark instrument chrome; screenshots sit on paper-white plates
+   so the evidence is the lit thing on the page.
+
+   Colour discipline: the alarm ramp encodes SEVERITY and nothing else. Persona
+   identity is carried by thin lane spines and avatar rings, never by fills, so
+   two colour systems never compete for the same meaning.
+--------------------------------------------------------------------------- */
+
+@theme {
+  --color-ink: #12161c;
+  --color-panel: #1a1f27;
+  --color-panel-2: #212832;
+  --color-hairline: #2a313b;
+  --color-plate: #f5f3ee;
+  --color-plate-edge: #ddd8cd;
+
+  --color-fg: #e8ecf1;
+  --color-fg-dim: #9aa5b3;
+  --color-fg-mute: #6b7684;
+
+  /* Severity ramp — the only alarm colours in the system. */
+  --color-blocker: #ff4d3d;
+  --color-major: #ff9f1c;
+  --color-minor: #5bc0be;
+  --color-nitpick: #8894a6;
+
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html {
+  background: var(--color-ink);
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Projector legibility: nothing below 14px carries meaning, and the mono
+   readouts are tracked out so they stay countable from the back of a room. */
+.readout {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-fg-mute);
+}
+
+.readout-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg);
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.02;
+}
+
+.hairline {
+  border-color: var(--color-hairline);
+}
+
+/* Severity is expressed three ways at once — fill, rule, and label — so it
+   survives both a projector and colour-blind viewers. */
+.sev-blocker { --sev: var(--color-blocker); }
+.sev-major   { --sev: var(--color-major); }
+.sev-minor   { --sev: var(--color-minor); }
+.sev-nitpick { --sev: var(--color-nitpick); }
+
+.sev-chip {
+  color: var(--sev);
+  border: 1px solid color-mix(in oklab, var(--sev) 45%, transparent);
+  background: color-mix(in oklab, var(--sev) 12%, transparent);
+}
+
+.sev-rule { background: var(--sev); }
+
+/* The pin that lands on a screenshot. Ring + number, never a bare dot. */
+.pin {
+  border-color: var(--sev);
+  background: color-mix(in oklab, var(--sev) 88%, black);
+  box-shadow:
+    0 0 0 3px color-mix(in oklab, var(--sev) 25%, transparent),
+    0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-minor) 35%, transparent);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-minor);
+  outline-offset: 2px;
+}
+
+/* The scanning shimmer used while a lane waits for a rate-limit slot. It is
+   the one ambient animation in the system; everything else is triggered. */
+@keyframes lane-scan {
+  0%   { background-position: -140% 0; }
+  100% { background-position: 240% 0; }
+}
+
+.lane-waiting {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--color-fg) 7%, transparent) 45%,
+    transparent 90%
+  );
+  background-size: 60% 100%;
+  background-repeat: no-repeat;
+  animation: lane-scan 2.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .lane-waiting { background-image: none; }
+}

@@ -118,3 +118,41 @@ surfaced something the sighted personas could not.
   designed; raised locally via config rather than code.
 
 **Deferred:** `pnpm eval` recall scoring against the planted-defect manifest.
+
+---
+
+## Checkpoint C part 1 — frontend
+
+**Landed:** `/` (thesis + demo gallery + run form), `/demo/[slug]` (replay, built
+first), `/runs/[id]` (live with WS reconnect), the report, and the empty state.
+
+**Aesthetic:** the metaphor is a **critical apparatus** — a claim, and the
+evidence pinned to it. Dark instrument housing; screenshots sit on paper-white
+plates so the evidence is the lit thing on the page. Instrument Serif for
+display, IBM Plex Sans for body, IBM Plex Mono for every readout. The severity
+ramp is the only alarm colour in the system; persona identity is carried by thin
+lane spines and never by fills, so two colour systems never compete for the same
+meaning.
+
+**The signature element** is the three persona lanes plotted against **one
+shared elapsed-time axis** rather than three independent chat columns. Three
+columns would show three transcripts; a shared axis shows the thing that
+actually matters — that they run at the same time, that one stalls while another
+races, and that an idle lane is waiting for a rate-limit slot rather than broken.
+
+That is also how the two-minute wait is handled: queueing renders as a labelled
+state on the axis with a countdown, so the delay reads as pacing you watch
+rather than lag you endure. There is no undifferentiated spinner anywhere.
+
+**Two things the screenshots caught that reading the code did not**
+
+- **Only one lane fit on screen.** Each lane grew with its own history, so by
+  step three the third persona was below the fold — destroying the entire
+  argument of the component. Lanes now get a fixed row budget (newest utterance,
+  newest finding); the filmstrip and report hold the full record.
+- **Exit animations were smearing.** Overlapping `AnimatePresence` exits left
+  ghosted text stacked on live text. Fixed with `mode="popLayout"` and a much
+  shorter exit.
+
+**Deferred:** copy-to-markdown on the report; the `layoutId` thumbnail→hero
+promotion (the filmstrip selects, but does not yet morph).
