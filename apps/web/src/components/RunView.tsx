@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MotionConfig } from "framer-motion";
-import { Filmstrip, Plate } from "./Plate";
+import { Plate } from "./Plate";
+import { PersonaFilter, Timeline } from "./Timeline";
 import { LaneReadout, type LaneState } from "./LaneReadout";
 import { Report } from "./Report";
 import { Readout, SeverityChip } from "./Chrome";
 import { personaMeta, formatCents, displayHost, type RunPayload } from "@/lib/api";
-import { laneFrames, mergeSteps, orderEvents } from "@/lib/steps";
+import { heroStep, laneFrames, mergeSteps, orderEvents, pendingSegue } from "@/lib/steps";
+import { buildTimeline } from "@/lib/timeline";
+import { elapsedMsFromEvents } from "@/lib/run-clock";
+import { outcomeWord, reachedGoal, runOutcomeSummary } from "@/lib/outcome";
 import { eventDwellMs } from "@/lib/replay";
 
 type Phase = "journey" | "report";
@@ -36,9 +40,10 @@ export function RunView({
     finished && !events ? "report" : "journey",
   );
   const [cursor, setCursor] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
-  const [activeStep, setActiveStep] = useState(0);
-  const startedRef = useRef<number>(Date.now());
+  /** null = follow the run; a step id = the reader has pinned that frame. */
+  const [pinnedStepId, setPinnedStepId] = useState<string | null>(null);
+  /** null = all three lanes; a persona key = read that journey alone. */
+  const [selectedPersona, setSelectedPersona] = useState<string | null>(null);
 
   // Ordered by seq, not by arrival: seq is the log's ordering authority and
   // the committed fixtures are stored unsorted.
@@ -54,7 +59,6 @@ export function RunView({
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
       setCursor(log.length);
-      setElapsed(120_000);
       return;
     }
     // Weighted by what was just revealed, not a flat tick: the event holding
@@ -65,15 +69,6 @@ export function RunView({
     );
     return () => clearTimeout(t);
   }, [cursor, log, replaySpeed]);
-
-  useEffect(() => {
-    if (!live && log.length === 0) return;
-    const id = setInterval(
-      () => setElapsed(Date.now() - startedRef.current),
-      500,
-    );
-    return () => clearInterval(id);
-  }, [live, log.length]);
 
   const visible = log.slice(0, cursor);
 
@@ -139,16 +134,53 @@ export function RunView({
     [visible, data.steps],
   );
 
-  // The plate follows the newest step until the reader picks one, then stays
-  // put. Without this, choosing a step mid-run is impossible: the next event
-  // snaps the plate back to the front and the filmstrip is decorative.
-  // Selecting the newest step again hands control back to the run.
-  const [following, setFollowing] = useState(true);
-  useEffect(() => {
-    if (following && revealedSteps.length > 0) {
-      setActiveStep(revealedSteps.length - 1);
-    }
-  }, [following, revealedSteps.length]);
+  // Elapsed is read off the log, not off a clock: it advances with the events
+  // being revealed, lands on the run's true duration, and stops on its own
+  // because there is no interval to forget to clear.
+  const elapsed = useMemo(() => elapsedMsFromEvents(visible), [visible]);
+
+  const timelineRows = useMemo(
+    () => buildTimeline(revealedSteps, visible),
+    [revealedSteps, visible],
+  );
+  const visibleRows = useMemo(
+    () =>
+      selectedPersona
+        ? timelineRows.filter((r) => r.personaKey === selectedPersona)
+        : timelineRows,
+    [timelineRows, selectedPersona],
+  );
+
+  // Follow the run unless the reader has pinned a frame. heroStep skips steps
+  // with no image, so the plate lingers rather than blanking every time the
+  // screen-reader persona takes a turn.
+  const followed = useMemo(
+    () => heroStep(revealedSteps, selectedPersona),
+    [revealedSteps, selectedPersona],
+  );
+  const pinned = pinnedStepId
+    ? (revealedSteps.find((s) => s.id === pinnedStepId) ?? null)
+    : null;
+  const hero = pinned ?? followed;
+
+  // Who is working past the plate without an image to contribute.
+  const segue = useMemo(
+    () => (pinned ? null : pendingSegue(revealedSteps, hero)),
+    [pinned, revealedSteps, hero],
+  );
+
+  const outcomeSummary = runOutcomeSummary(data.personaRuns);
+
+  // The outcome belongs on the plate only when the plate is showing that
+  // persona's last frame — otherwise it would label a mid-journey step as the
+  // end of the story.
+  const heroOutcome = (() => {
+    if (!hero) return null;
+    const lane = lanes.find((l) => l.personaKey === hero.personaKey);
+    if (!lane?.outcome) return null;
+    const theirLast = revealedSteps.filter((s) => s.personaKey === hero.personaKey).at(-1);
+    return theirLast?.id === hero.id ? lane.outcome : null;
+  })();
 
   // Each lane carries its own latest frame, so the three personas are watchable
   // simultaneously instead of competing for the single hero plate.
@@ -161,7 +193,6 @@ export function RunView({
   }, [lanes, revealedSteps]);
 
   const replayDone = log.length > 0 && cursor >= log.length;
-  const hero = revealedSteps[activeStep] ?? revealedSteps[revealedSteps.length - 1];
   const issueCount = data.issues.length;
 
   return (
@@ -182,13 +213,16 @@ export function RunView({
             {displayHost(data.run.url)}
           </a>
         </div>
-        <div className="min-w-0 flex-1">
+        {/* Its own row on a phone. min-w-0 lets a flex item shrink below its
+            content, so sharing a line here squeezed the goal to one word per
+            line and spilled it over the readouts. */}
+        <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
           <div className="readout mb-1">goal</div>
           <p className="display text-[1.35rem] leading-tight text-fg">
             “{data.run.goal}”
           </p>
         </div>
-        <div className="flex items-end gap-7">
+        <div className="flex flex-wrap items-end gap-x-7 gap-y-3">
           <Readout
             label="elapsed"
             value={`${Math.floor(elapsed / 60000)}:${String(
@@ -228,12 +262,17 @@ export function RunView({
 
       {phase === "journey" ? (
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
-          <div className="flex flex-col gap-4">
+          {/* min-w-0: a grid item defaults to min-width:auto, so one nowrap
+              child (a truncated URL) widens the whole column past the page. */}
+          <div className="flex min-w-0 flex-col gap-4">
             <Plate
               src={hero?.screenshotUrl ?? null}
               alt={hero ? `Step ${hero.index}: ${hero.narration}` : "Waiting"}
               personaKey={hero?.personaKey ?? null}
               runFinished={finished}
+              /* Sets the plate's aspect, so a 390-wide phone frame and a
+                 1440-wide desktop one are shown at honestly different sizes. */
+              viewport={hero ? personaMeta(hero.personaKey).viewport : undefined}
               frameId={hero ? `frame-${hero.id}` : undefined}
               caption={
                 hero ? (
@@ -245,27 +284,76 @@ export function RunView({
                     <span className="text-fg-mute">·</span>
                     <span>step {hero.index}</span>
                     <span className="text-fg-mute">·</span>
-                    <span className="normal-case tracking-normal">{hero.url}</span>
+                    <span className="min-w-0 break-all normal-case tracking-normal">{hero.url}</span>
+                    {heroOutcome && (
+                      <span
+                        className={`ml-auto border px-1.5 py-0.5 text-[0.6rem] ${
+                          reachedGoal(heroOutcome)
+                            ? "border-minor/50 bg-minor/10 text-minor"
+                            : "border-hairline text-fg-mute"
+                        }`}
+                      >
+                        {outcomeWord(heroOutcome)}
+                      </span>
+                    )}
                   </>
                 ) : (
                   <span>waiting for the first screenshot</span>
                 )
               }
             />
-            {revealedSteps.length > 0 && (
-              <Filmstrip
-                steps={revealedSteps}
-                activeIndex={activeStep}
-                onSelect={(i) => {
-                  setActiveStep(i);
-                  setFollowing(i === revealedSteps.length - 1);
-                }}
-              />
+            {/* Lingering on the last frame would hide a persona that is mid-step
+                with nothing to show, so the plate says who is working and what
+                they just said instead of going quiet. */}
+            {segue && (
+              <p className="flex flex-wrap items-baseline gap-2 border-l-2 pl-3 text-[0.82rem] text-fg-dim"
+                 style={{ borderColor: personaMeta(segue.personaKey).colour }}>
+                <span className="readout text-[0.6rem]">
+                  {personaMeta(segue.personaKey).short} · step {segue.index} · no screenshot
+                </span>
+                {segue.narration && (
+                  <span className="italic text-fg-mute">“{segue.narration}”</span>
+                )}
+              </p>
             )}
+
+            {outcomeSummary && (
+              <p className="border-l-2 border-minor/60 pl-3 text-[0.95rem] text-fg">
+                {outcomeSummary}
+              </p>
+            )}
+
+            <PersonaFilter
+              personaKeys={data.personaRuns.map((p) => p.personaKey)}
+              selected={selectedPersona}
+              onSelect={(key) => {
+                setSelectedPersona(key);
+                // Switching journeys hands the plate back to the run rather
+                // than stranding it on a frame from the persona you just left.
+                setPinnedStepId(null);
+              }}
+            />
+
+            <Timeline
+              rows={visibleRows}
+              activeId={hero ? `${hero.personaKey}:${hero.index}` : null}
+              onSelect={(row) => {
+                // Selecting the newest frame resumes following the run.
+                const newest = visibleRows.filter((r) => r.kind === "step").at(-1);
+                setPinnedStepId(
+                  row.id === newest?.id ? null : (row.step?.id ?? null),
+                );
+              }}
+            />
           </div>
 
           <LaneReadout
             lanes={lanesWithFrames}
+            selected={selectedPersona}
+            onSelect={(key) => {
+              setSelectedPersona(key);
+              setPinnedStepId(null);
+            }}
             elapsedMs={elapsed}
             totalSteps={Math.max(
               5,

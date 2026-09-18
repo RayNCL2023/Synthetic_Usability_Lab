@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { laneFrames, mergeSteps, orderEvents, type DisplayStep } from "./steps";
+import { heroStep, laneFrames, mergeSteps, orderEvents, pendingSegue, type DisplayStep } from "./steps";
 import type { RunPayload } from "./api";
 
 /**
@@ -268,5 +268,121 @@ describe("orderEvents", () => {
     const seqs = orderEvents(fixture.events).map((e) => e["seq"] as number);
 
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+  });
+});
+
+/**
+ * Which step the plate should be showing.
+ *
+ * The plate used to follow the newest step of any persona, and the
+ * screen-reader persona never has an image — so on a nine-step run the plate
+ * blanked to a placeholder and back seven times. Lingering on the last real
+ * frame is what makes the sequence read as one continuous journey.
+ */
+describe("heroStep", () => {
+  function display(over: Partial<DisplayStep> = {}): DisplayStep {
+    return {
+      id: "s",
+      personaKey: "impatient_mobile",
+      index: 0,
+      url: "https://example.com/",
+      screenshotUrl: "https://minio/a.jpg",
+      narration: "",
+      ...over,
+    };
+  }
+
+  it("follows the newest step that actually has an image", () => {
+    const hero = heroStep(
+      [
+        display({ id: "m0", index: 0 }),
+        display({ id: "m1", index: 1 }),
+        display({ id: "sr0", personaKey: "screen_reader", screenshotUrl: null }),
+      ],
+      null,
+    );
+
+    expect(hero?.id).toBe("m1");
+  });
+
+  it("never falls back to an imageless step once an image exists", () => {
+    // The anti-flicker guarantee: the plate may go empty -> filled, never back.
+    const steps = [display({ id: "m0" })];
+    for (const key of ["screen_reader", "screen_reader", "screen_reader"]) {
+      steps.push(display({ id: key + steps.length, personaKey: key, screenshotUrl: null }));
+      expect(heroStep(steps, null)?.screenshotUrl).not.toBeNull();
+    }
+  });
+
+  it("shows the newest step when nothing has an image yet", () => {
+    const hero = heroStep(
+      [
+        display({ id: "sr0", personaKey: "screen_reader", screenshotUrl: null, index: 0 }),
+        display({ id: "sr1", personaKey: "screen_reader", screenshotUrl: null, index: 1 }),
+      ],
+      null,
+    );
+
+    expect(hero?.id).toBe("sr1");
+  });
+
+  it("stays within the selected persona", () => {
+    const hero = heroStep(
+      [
+        display({ id: "p0", personaKey: "procurement" }),
+        display({ id: "m0", personaKey: "impatient_mobile" }),
+      ],
+      "procurement",
+    );
+
+    expect(hero?.id).toBe("p0");
+  });
+
+  it("shows a selected persona's newest step even when it never has an image", () => {
+    const hero = heroStep(
+      [
+        display({ id: "m0", personaKey: "impatient_mobile" }),
+        display({ id: "sr0", personaKey: "screen_reader", screenshotUrl: null, index: 0 }),
+        display({ id: "sr1", personaKey: "screen_reader", screenshotUrl: null, index: 1 }),
+      ],
+      "screen_reader",
+    );
+
+    expect(hero?.id).toBe("sr1");
+  });
+
+  it("has nothing to show before the first step", () => {
+    expect(heroStep([], null)).toBeNull();
+  });
+});
+
+describe("pendingSegue", () => {
+  const shot = (id: string, personaKey: string, index: number): DisplayStep => ({
+    id, personaKey, index, url: "u", screenshotUrl: "https://minio/a.jpg", narration: "",
+  });
+  const blind = (id: string, personaKey: string, index: number): DisplayStep => ({
+    id, personaKey, index, url: "u", screenshotUrl: null, narration: "",
+  });
+
+  it("names the persona working past the plate without an image", () => {
+    const steps = [shot("m0", "impatient_mobile", 0), blind("sr0", "screen_reader", 0)];
+
+    expect(pendingSegue(steps, steps[0]!)?.personaKey).toBe("screen_reader");
+  });
+
+  it("says nothing when the plate is already showing the newest step", () => {
+    const steps = [shot("m0", "impatient_mobile", 0)];
+
+    expect(pendingSegue(steps, steps[0]!)).toBeNull();
+  });
+
+  it("says nothing when the newest step has its own image to show", () => {
+    const steps = [shot("m0", "impatient_mobile", 0), shot("p0", "procurement", 0)];
+
+    expect(pendingSegue(steps, steps[0]!)).toBeNull();
+  });
+
+  it("says nothing when there is no plate yet", () => {
+    expect(pendingSegue([blind("sr0", "screen_reader", 0)], null)).toBeNull();
   });
 });

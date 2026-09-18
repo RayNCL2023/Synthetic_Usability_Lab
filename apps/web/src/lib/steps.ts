@@ -55,6 +55,53 @@ export interface DisplayStep {
   narration: string;
 }
 
+/**
+ * Which step the plate should follow.
+ *
+ * The plate used to track the newest step of any persona, and the
+ * screen-reader persona never receives an image — so across a nine-step run it
+ * blanked to a placeholder and back seven times. Skipping imageless steps makes
+ * it linger on the last real frame, and the sequence reads as one continuous
+ * journey instead of a slideshow with holes in it.
+ *
+ * The placeholder is not lost, only moved to where it means something: a
+ * persona selected on purpose, and the report.
+ */
+export function heroStep(
+  steps: DisplayStep[],
+  selectedPersona: string | null,
+): DisplayStep | null {
+  const pool = selectedPersona
+    ? steps.filter((s) => s.personaKey === selectedPersona)
+    : steps;
+  if (pool.length === 0) return null;
+
+  for (let i = pool.length - 1; i >= 0; i--) {
+    if (pool[i]!.screenshotUrl) return pool[i]!;
+  }
+
+  // Nothing has produced an image yet, or this persona never will. Showing its
+  // newest step is right in both cases — the plate then explains the absence.
+  return pool[pool.length - 1]!;
+}
+
+/**
+ * The persona working past the plate without an image to contribute.
+ *
+ * Lingering on the last frame would otherwise hide the screen-reader persona
+ * entirely while it is mid-journey, so the plate names what it is doing rather
+ * than pretending nothing is happening.
+ */
+export function pendingSegue(
+  steps: DisplayStep[],
+  hero: DisplayStep | null,
+): DisplayStep | null {
+  if (hero === null) return null;
+  const newest = steps[steps.length - 1];
+  if (!newest || newest.id === hero.id) return null;
+  return newest.screenshotUrl ? null : newest;
+}
+
 export interface LaneFrame {
   personaKey: string;
   /** The persona's most recent revealed step. */

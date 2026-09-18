@@ -44,16 +44,29 @@ export function Plate({
   personaKey?: string | null;
   runFinished?: boolean;
   /**
-   * Shared-layout identity. When it matches the filmstrip slot for the same
-   * step, the thumbnail travels into the plate instead of the two images
-   * cross-fading — the transition then reads as one object moving, which is
-   * what makes the filmstrip feel like a strip of this plate's history.
+   * Shared-layout identity. When it matches the timeline row for the same
+   * step, that row's thumbnail travels into the plate instead of the two
+   * images cross-fading — the transition reads as one object moving, which is
+   * what ties the timeline to the plate it is a history of.
    */
   frameId?: string;
 }) {
   const vw = viewport?.width ?? 1280;
   const vh = viewport?.height ?? 800;
   const empty = plateEmptyState({ personaKey, runFinished });
+
+  /**
+   * The width the image would take at the height cap, derived from the
+   * persona's viewport aspect rather than from the file.
+   *
+   * The wrapper has to hug the rendered image exactly — pins are positioned as
+   * a percentage of it — but sizing it to its content (`w-fit`) is circular: a
+   * child's `max-width: 100%` then resolves against the content width, so the
+   * image never caps and stretches the whole column past the viewport. Fixing
+   * the width up front breaks the cycle and keeps the box exact.
+   */
+  const MAX_PLATE_HEIGHT = 620;
+  const capWidth = Math.round(MAX_PLATE_HEIGHT * (vw / vh));
 
   return (
     <figure className="flex flex-col gap-2">
@@ -65,7 +78,10 @@ export function Plate({
              cap also lets a phone plate sit beside a 1440-wide one at honestly
              different sizes. The box must hug the rendered image exactly —
              pins are positioned as a percentage of it. */
-          <div className="relative mx-auto w-fit">
+          <div
+            className="relative mx-auto"
+            style={{ width: `min(100%, ${capWidth}px)` }}
+          >
             <motion.img
               key={src}
               layoutId={frameId}
@@ -74,7 +90,7 @@ export function Plate({
               initial={{ opacity: 0.4 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.25 }}
-              className="block max-h-[620px] w-auto max-w-full"
+              className="block h-auto w-full"
             />
             <AnimatePresence>
               {pins.map((p) =>
@@ -125,90 +141,10 @@ export function Plate({
         )}
       </div>
       {caption && (
-        <figcaption className="readout flex items-center gap-2 text-[0.66rem]">
+        <figcaption className="readout flex flex-wrap items-center gap-2 text-[0.66rem]">
           {caption}
         </figcaption>
       )}
     </figure>
-  );
-}
-
-/**
- * Filmstrip of prior steps. `layoutId` promotes a thumbnail into the hero, so
- * the transition reads as the same object moving rather than two images
- * cross-fading.
- */
-export function Filmstrip({
-  steps,
-  activeIndex,
-  onSelect,
-}: {
-  steps: Array<{
-    id: string;
-    index: number;
-    personaKey: string;
-    screenshotUrl: string | null;
-    narration: string;
-  }>;
-  activeIndex: number;
-  onSelect: (i: number) => void;
-}) {
-  return (
-    <div
-      className="flex gap-2 overflow-x-auto pb-1"
-      role="tablist"
-      aria-label="Steps"
-    >
-      {steps.map((s, i) => {
-        const meta = personaMeta(s.personaKey);
-        const active = i === activeIndex;
-        return (
-          <button
-            key={s.id}
-            role="tab"
-            aria-selected={active}
-            onClick={() => onSelect(i)}
-            title={s.narration}
-            className="group relative shrink-0"
-          >
-            <div
-              className={`h-14 w-24 overflow-hidden rounded-sm border transition-opacity ${
-                active
-                  ? "border-fg-dim opacity-100"
-                  : "border-hairline opacity-55 group-hover:opacity-85"
-              }`}
-            >
-              {!s.screenshotUrl ? (
-                <div className="grid h-full w-full place-items-center bg-panel-2">
-                  <span className="readout text-[0.55rem]">no image</span>
-                </div>
-              ) : active ? (
-                /* The frame is currently up in the plate. Only one element may
-                   hold a shared layout id at a time, so the slot it left is
-                   labelled rather than duplicated — which is also the honest
-                   reading: this frame is the one you are looking at. */
-                <div className="grid h-full w-full place-items-center bg-panel-2">
-                  <span className="readout text-[0.55rem]">in the plate</span>
-                </div>
-              ) : (
-                <motion.img
-                  layoutId={`frame-${s.id}`}
-                  src={s.screenshotUrl}
-                  alt=""
-                  className="h-full w-full object-cover object-top"
-                />
-              )}
-            </div>
-            <span
-              className="absolute inset-x-0 bottom-0 h-[2px]"
-              style={{ background: meta.colour, opacity: active ? 1 : 0.4 }}
-            />
-            <span className="readout mt-1 block text-[0.58rem]">
-              {meta.short} · {s.index}
-            </span>
-          </button>
-        );
-      })}
-    </div>
   );
 }

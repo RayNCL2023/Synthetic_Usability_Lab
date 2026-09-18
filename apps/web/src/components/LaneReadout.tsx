@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { personaMeta } from "@/lib/api";
 import type { LaneFrame } from "@/lib/steps";
+import { outcomeWord } from "@/lib/outcome";
 
 /**
  * The signature element: three persona lanes plotted against ONE shared
@@ -44,13 +45,9 @@ export interface LaneState {
 }
 
 function statusWord(l: LaneState): string {
-  if (l.status === "finished") {
-    if (l.outcome === "goal_achieved") return "reached the goal";
-    if (l.outcome === "blocked") return "blocked by the site";
-    if (l.outcome === "capped") return "hit the step limit";
-    if (l.outcome === "error") return "stopped on an error";
-    return "gave up";
-  }
+  // The vocabulary is shared with the plate and the timeline so the same
+  // result is never described three different ways.
+  if (l.status === "finished") return outcomeWord(l.outcome) ?? "finished";
   if (l.status === "waiting")
     return l.slotInSeconds !== null
       ? `waiting for a model slot — ${l.slotInSeconds}s`
@@ -63,26 +60,36 @@ export function LaneReadout({
   lanes,
   elapsedMs,
   totalSteps,
+  selected = null,
+  onSelect,
 }: {
   lanes: LaneState[];
   elapsedMs: number;
   totalSteps: number;
+  /** Persona currently being read alone, if any. */
+  selected?: string | null;
+  onSelect?: (key: string | null) => void;
 }) {
   const seconds = Math.floor(elapsedMs / 1000);
   const axisMax = Math.max(120, Math.ceil(seconds / 30) * 30);
   const ticks = Array.from({ length: axisMax / 30 + 1 }, (_, i) => i * 30);
 
   return (
-    <section aria-label="Persona progress" className="flex flex-col">
+    <section aria-label="Persona progress" className="flex min-w-0 flex-col">
       {/* Shared time axis. The whole point of the component. */}
       <div className="relative mb-1 h-5 border-b border-hairline">
         {ticks.map((t) => (
           <div
             key={t}
-            className="absolute top-0 flex h-full items-end"
+            /* The transform belongs on the positioned box, not on the text
+               inside it: the first and last labels sit flush rather than
+               centred so neither hangs off the axis and past the page edge. */
+            className={`absolute top-0 flex h-full items-end ${
+              t === 0 ? "" : t === axisMax ? "-translate-x-full" : "-translate-x-1/2"
+            }`}
             style={{ left: `${(t / axisMax) * 100}%` }}
           >
-            <span className="readout -translate-x-1/2 pb-0.5 text-[0.62rem]">
+            <span className="readout pb-0.5 text-[0.62rem]">
               {t === 0 ? "0:00" : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`}
             </span>
           </div>
@@ -100,8 +107,14 @@ export function LaneReadout({
           const progress = totalSteps > 0 ? lane.stepCount / totalSteps : 0;
           const done = lane.status === "finished" || lane.status === "failed";
 
+          const isSelected = selected === lane.personaKey;
           return (
-            <article key={lane.personaKey} className="flex gap-3 py-3">
+            <article
+              key={lane.personaKey}
+              className={`flex gap-3 py-3 transition-colors ${
+                isSelected ? "bg-panel" : ""
+              }`}
+            >
               {/* Lane spine: the ONLY place persona colour is used. */}
               <div
                 className="w-[3px] shrink-0 rounded-full"
@@ -121,7 +134,19 @@ export function LaneReadout({
                   >
                     {meta.avatar}
                   </span>
-                  <h3 className="text-sm font-medium text-fg">{meta.name}</h3>
+                  <button
+                    type="button"
+                    onClick={() => onSelect?.(isSelected ? null : lane.personaKey)}
+                    aria-pressed={isSelected}
+                    title={
+                      isSelected
+                        ? "Show all three journeys"
+                        : `Read ${meta.name}'s journey on its own`
+                    }
+                    className="text-left text-sm font-medium text-fg underline-offset-4 hover:underline"
+                  >
+                    {meta.name}
+                  </button>
                   {!meta.sighted && (
                     <span
                       className="readout text-[0.6rem]"
