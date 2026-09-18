@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { MotionConfig } from "framer-motion";
 import { Filmstrip, Plate } from "./Plate";
 import { LaneReadout, type LaneState } from "./LaneReadout";
 import { Report } from "./Report";
 import { Readout, SeverityChip } from "./Chrome";
 import { personaMeta, formatCents, displayHost, type RunPayload } from "@/lib/api";
+import { laneFrames, mergeSteps, orderEvents } from "@/lib/steps";
 
 type Phase = "journey" | "report";
 
@@ -37,7 +39,9 @@ export function RunView({
   const [activeStep, setActiveStep] = useState(0);
   const startedRef = useRef<number>(Date.now());
 
-  const log = useMemo(() => events ?? [], [events]);
+  // Ordered by seq, not by arrival: seq is the log's ordering authority and
+  // the committed fixtures are stored unsorted.
+  const log = useMemo(() => orderEvents(events ?? []), [events]);
 
   // Replay clock. Seeded runs advance through the persisted log at 2–4×; the
   // pacing is what makes three parallel personas legible rather than a blur.
@@ -78,6 +82,7 @@ export function RunView({
         stepCount: 0,
         outcome: null,
         slotInSeconds: null,
+        frame: null,
         events: [],
       });
     }
@@ -117,27 +122,46 @@ export function RunView({
   }, [visible, data.personaRuns]);
 
   // Steps revealed so far, newest last.
-  const revealedSteps = useMemo(() => {
-    if (log.length === 0) return data.steps;
-    const seen = new Set<string>();
-    for (const raw of visible) {
-      const e = raw as Record<string, unknown>;
-      if (e["type"] === "persona.step") {
-        seen.add(`${e["personaKey"]}:${e["stepIndex"]}`);
-      }
-    }
-    return data.steps.filter((s) => seen.has(`${s.personaKey}:${s.index}`));
-  }, [visible, data.steps, log.length]);
+  //
+  // The event log reveals a step and carries its screenshot; the payload
+  // enriches it once /runs/:id has caught up. Filtering the payload alone —
+  // which is what this used to do — renders an empty plate for the entire
+  // duration of a live run, because the payload is still empty when the page
+  // loads and is not refetched until the run finishes.
+  const revealedSteps = useMemo(
+    () => mergeSteps(data.steps, visible),
+    [visible, data.steps],
+  );
 
+  // The plate follows the newest step until the reader picks one, then stays
+  // put. Without this, choosing a step mid-run is impossible: the next event
+  // snaps the plate back to the front and the filmstrip is decorative.
+  // Selecting the newest step again hands control back to the run.
+  const [following, setFollowing] = useState(true);
   useEffect(() => {
-    if (revealedSteps.length > 0) setActiveStep(revealedSteps.length - 1);
-  }, [revealedSteps.length]);
+    if (following && revealedSteps.length > 0) {
+      setActiveStep(revealedSteps.length - 1);
+    }
+  }, [following, revealedSteps.length]);
+
+  // Each lane carries its own latest frame, so the three personas are watchable
+  // simultaneously instead of competing for the single hero plate.
+  const lanesWithFrames = useMemo(() => {
+    const frames = laneFrames(revealedSteps);
+    return lanes.map((lane) => ({
+      ...lane,
+      frame: frames.get(lane.personaKey) ?? null,
+    }));
+  }, [lanes, revealedSteps]);
 
   const replayDone = log.length > 0 && cursor >= log.length;
   const hero = revealedSteps[activeStep] ?? revealedSteps[revealedSteps.length - 1];
   const issueCount = data.issues.length;
 
   return (
+    /* Layout animations move real distance across the page, so the OS setting
+       governs them rather than only the replay clock below. */
+    <MotionConfig reducedMotion="user">
     <div className="mx-auto max-w-[1600px] px-6 py-6">
       {/* Subject strip — what is being measured. */}
       <div className="mb-6 flex flex-wrap items-end gap-x-8 gap-y-4 border-b border-hairline pb-5">
@@ -202,6 +226,9 @@ export function RunView({
             <Plate
               src={hero?.screenshotUrl ?? null}
               alt={hero ? `Step ${hero.index}: ${hero.narration}` : "Waiting"}
+              personaKey={hero?.personaKey ?? null}
+              runFinished={finished}
+              frameId={hero ? `frame-${hero.id}` : undefined}
               caption={
                 hero ? (
                   <>
@@ -223,13 +250,16 @@ export function RunView({
               <Filmstrip
                 steps={revealedSteps}
                 activeIndex={activeStep}
-                onSelect={setActiveStep}
+                onSelect={(i) => {
+                  setActiveStep(i);
+                  setFollowing(i === revealedSteps.length - 1);
+                }}
               />
             )}
           </div>
 
           <LaneReadout
-            lanes={lanes}
+            lanes={lanesWithFrames}
             elapsedMs={elapsed}
             totalSteps={Math.max(
               5,
@@ -241,5 +271,6 @@ export function RunView({
         <Report data={data} />
       )}
     </div>
+    </MotionConfig>
   );
 }

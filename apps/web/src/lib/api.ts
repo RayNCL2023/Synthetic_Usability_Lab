@@ -57,9 +57,25 @@ export interface RunPayload {
   }>;
 }
 
+/**
+ * `viewport` is the CSS-pixel frame each persona's bounding boxes were measured
+ * in, and the report plots pins as a percentage of it. The three personas do
+ * NOT share one — a box measured at 1440×900 placed against a 390×844 plate
+ * points at nothing — so it travels with the persona rather than defaulting.
+ *
+ * Mirrors `PERSONAS[].harness` in @sul/shared, duplicated so the recorded-run
+ * routes need no backend. api.test.ts fails if the two drift apart.
+ */
 export const PERSONA_META: Record<
   string,
-  { name: string; short: string; avatar: string; colour: string; sighted: boolean }
+  {
+    name: string;
+    short: string;
+    avatar: string;
+    colour: string;
+    sighted: boolean;
+    viewport: { width: number; height: number };
+  }
 > = {
   impatient_mobile: {
     name: "Impatient mobile user",
@@ -67,6 +83,7 @@ export const PERSONA_META: Record<
     avatar: "▮",
     colour: "#F97316",
     sighted: true,
+    viewport: { width: 390, height: 844 },
   },
   screen_reader: {
     name: "Screen-reader user",
@@ -74,6 +91,7 @@ export const PERSONA_META: Record<
     avatar: "◎",
     colour: "#8B5CF6",
     sighted: false,
+    viewport: { width: 1280, height: 800 },
   },
   procurement: {
     name: "Sceptical procurement manager",
@@ -81,6 +99,7 @@ export const PERSONA_META: Record<
     avatar: "▤",
     colour: "#0EA5E9",
     sighted: true,
+    viewport: { width: 1440, height: 900 },
   },
 };
 
@@ -92,6 +111,7 @@ export function personaMeta(key: string) {
       avatar: "•",
       colour: "#8894A6",
       sighted: true,
+      viewport: { width: 1280, height: 800 },
     }
   );
 }

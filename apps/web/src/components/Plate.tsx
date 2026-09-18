@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { personaMeta } from "@/lib/api";
+import { plateEmptyState } from "@/lib/plate-state";
 
 /**
  * The evidence plate.
@@ -27,6 +28,9 @@ export function Plate({
   caption,
   activePin,
   onPinClick,
+  personaKey = null,
+  runFinished = false,
+  frameId,
 }: {
   src: string | null;
   alt: string;
@@ -36,23 +40,41 @@ export function Plate({
   caption?: React.ReactNode;
   activePin?: number | null;
   onPinClick?: (n: number) => void;
+  /** Who was walking. Decides what an empty plate is allowed to claim. */
+  personaKey?: string | null;
+  runFinished?: boolean;
+  /**
+   * Shared-layout identity. When it matches the filmstrip slot for the same
+   * step, the thumbnail travels into the plate instead of the two images
+   * cross-fading — the transition then reads as one object moving, which is
+   * what makes the filmstrip feel like a strip of this plate's history.
+   */
+  frameId?: string;
 }) {
   const vw = viewport?.width ?? 1280;
   const vh = viewport?.height ?? 800;
+  const empty = plateEmptyState({ personaKey, runFinished });
 
   return (
     <figure className="flex flex-col gap-2">
       <div className="relative overflow-hidden rounded-sm border border-plate-edge bg-plate p-2 shadow-[0_18px_50px_-20px_rgba(0,0,0,0.8)]">
         {src ? (
-          <div className="relative">
+          /* Sized to the image rather than to the column. Personas do not share
+             a viewport, and a 390×844 phone capture stretched to a desktop
+             column runs past 2000px tall and buries the finding under it. The
+             cap also lets a phone plate sit beside a 1440-wide one at honestly
+             different sizes. The box must hug the rendered image exactly —
+             pins are positioned as a percentage of it. */
+          <div className="relative mx-auto w-fit">
             <motion.img
               key={src}
+              layoutId={frameId}
               src={src}
               alt={alt}
               initial={{ opacity: 0.4 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.25 }}
-              className="block h-auto w-full"
+              className="block max-h-[620px] w-auto max-w-full"
             />
             <AnimatePresence>
               {pins.map((p) =>
@@ -84,14 +106,19 @@ export function Plate({
             </AnimatePresence>
           </div>
         ) : (
-          /* The screen-reader persona has no screenshot BY DESIGN. Saying so
-             is more honest and more interesting than a grey placeholder. */
-          <div className="grid aspect-[16/10] place-items-center bg-plate px-8 text-center">
+          /* Why the evidence is absent, stated accurately. The screen-reader
+             persona has no screenshot BY DESIGN and saying so is more honest
+             and more interesting than a grey placeholder — but it is only one
+             of the reasons a plate can be empty, and claiming it for the
+             others misreports the run. */
+          <div
+            data-empty={empty.kind}
+            className="grid aspect-[16/10] max-h-[620px] place-items-center bg-plate px-8 text-center"
+          >
             <div>
-              <p className="display text-[1.5rem] text-ink/80">No screenshot</p>
+              <p className="display text-[1.5rem] text-ink/80">{empty.title}</p>
               <p className="mx-auto mt-2 max-w-[38ch] text-[0.85rem] leading-relaxed text-ink/55">
-                This persona navigates by the accessibility tree alone. If the
-                page is unusable without sight, it genuinely fails here.
+                {empty.detail}
               </p>
             </div>
           </div>
@@ -151,16 +178,25 @@ export function Filmstrip({
                   : "border-hairline opacity-55 group-hover:opacity-85"
               }`}
             >
-              {s.screenshotUrl ? (
-                <img
+              {!s.screenshotUrl ? (
+                <div className="grid h-full w-full place-items-center bg-panel-2">
+                  <span className="readout text-[0.55rem]">no image</span>
+                </div>
+              ) : active ? (
+                /* The frame is currently up in the plate. Only one element may
+                   hold a shared layout id at a time, so the slot it left is
+                   labelled rather than duplicated — which is also the honest
+                   reading: this frame is the one you are looking at. */
+                <div className="grid h-full w-full place-items-center bg-panel-2">
+                  <span className="readout text-[0.55rem]">in the plate</span>
+                </div>
+              ) : (
+                <motion.img
+                  layoutId={`frame-${s.id}`}
                   src={s.screenshotUrl}
                   alt=""
                   className="h-full w-full object-cover object-top"
                 />
-              ) : (
-                <div className="grid h-full w-full place-items-center bg-panel-2">
-                  <span className="readout text-[0.55rem]">no image</span>
-                </div>
               )}
             </div>
             <span

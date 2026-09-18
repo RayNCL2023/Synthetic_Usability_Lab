@@ -8,12 +8,8 @@ import { runAgentLoop } from "../loop/agent.js";
 import { RunBudget } from "../loop/budget.js";
 import { RunEventEmitter } from "../events/emitter.js";
 import { persistStep, updatePersonaRun } from "../persistence/repository.js";
-import {
-  isStorageConfigured,
-  presignScreenshot,
-  screenshotKey,
-  uploadScreenshot,
-} from "../storage/s3.js";
+import { presignScreenshot } from "../storage/s3.js";
+import { s3Sink, storeStepScreenshot } from "../storage/step-screenshot.js";
 import type { ModelClient } from "../model/client.js";
 import { DailyQuotaExhaustedError } from "../model/ratelimit.js";
 
@@ -42,7 +38,7 @@ export async function processPersonaJob(
   const persona = getPersona(personaKey);
   const emitter = new RunEventEmitter(deps.db, deps.redis, runId);
   const budget = deps.budgetFor(runId);
-  const storage = isStorageConfigured();
+  const sink = s3Sink();
 
   await updatePersonaRun(deps.db, personaRunId, { status: "running" });
 
@@ -74,11 +70,12 @@ export async function processPersonaJob(
         },
 
         onStep: async (step) => {
-          let key: string | null = null;
-          if (step.screenshot && storage) {
-            key = screenshotKey(runId, personaKey, step.index);
-            await uploadScreenshot(key, step.screenshot);
-          }
+          const key = await storeStepScreenshot(sink, {
+            runId,
+            personaKey,
+            stepIndex: step.index,
+            screenshot: step.screenshot,
+          });
           const { observationIds } = await persistStep(
             deps.db,
             personaRunId,

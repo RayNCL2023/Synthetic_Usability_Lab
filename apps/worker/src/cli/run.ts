@@ -26,12 +26,8 @@ import {
   setRunStatus,
   updatePersonaRun,
 } from "../persistence/repository.js";
-import {
-  ensureBucket,
-  isStorageConfigured,
-  screenshotKey,
-  uploadScreenshot,
-} from "../storage/s3.js";
+import { ensureBucket, isStorageConfigured } from "../storage/s3.js";
+import { s3Sink, storeStepScreenshot } from "../storage/step-screenshot.js";
 import { startFixtureServer } from "./fixture.js";
 
 /**
@@ -89,6 +85,7 @@ async function main() {
   const db = getDb(data.DATABASE_URL);
   const storage = isStorageConfigured();
   if (storage) await ensureBucket();
+  const sink = s3Sink();
 
   const runId = await createRun(db, { url: target, goal, modelConfig });
   const personaRunId = await createPersonaRun(db, runId, persona.key);
@@ -133,11 +130,12 @@ async function main() {
         await updatePersonaRun(db, personaRunId, { currentActionLabel: label });
       },
       onStep: async (step) => {
-        let key: string | null = null;
-        if (step.screenshot && storage) {
-          key = screenshotKey(runId, persona.key, step.index);
-          await uploadScreenshot(key, step.screenshot);
-        }
+        const key = await storeStepScreenshot(sink, {
+          runId,
+          personaKey: persona.key,
+          stepIndex: step.index,
+          screenshot: step.screenshot,
+        });
         await persistStep(db, personaRunId, step, key);
         await updatePersonaRun(db, personaRunId, { stepCount: step.index + 1 });
 

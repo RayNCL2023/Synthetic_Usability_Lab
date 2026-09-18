@@ -24,7 +24,15 @@ import {
   type GroundingStats,
 } from "../loop/validator.js";
 import { buildModelClient } from "../model/factory.js";
-import { createPersonaRun, createRun, finishRun, persistStep } from "../persistence/repository.js";
+import {
+  createPersonaRun,
+  createRun,
+  finishRun,
+  persistStep,
+  updatePersonaRun,
+} from "../persistence/repository.js";
+import { ensureBucket } from "../storage/s3.js";
+import { s3Sink, storeStepScreenshot } from "../storage/step-screenshot.js";
 import { startFixtureServer } from "./fixture.js";
 import type { ClusterObservationInput } from "../model/client.js";
 
@@ -131,6 +139,9 @@ async function runCell(
   const browserEnv = loadEnv(BrowserEnv);
   const db = getDb(data.DATABASE_URL);
 
+  const sink = s3Sink();
+  if (sink.enabled) await ensureBucket();
+
   // The sweep axis is applied through env so the factory and snapshot builder
   // stay unaware they are being swept.
   process.env.SUL_GEMINI_LOOP_MODEL = cell.loopModel;
@@ -182,6 +193,7 @@ async function runCell(
     for (const key of PERSONA_KEYS) {
       const persona = getPersona(key);
       const personaRunId = await createPersonaRun(db, runId, key);
+      await updatePersonaRun(db, personaRunId, { status: "running" });
       const session = await driver.createPersonaContext(persona);
       try {
         const result = await runAgentLoop({
@@ -194,8 +206,23 @@ async function runCell(
           stepTimeoutMs: browserEnv.SUL_STEP_TIMEOUT_MS,
           snapshotMaxNodes: cell.maxNodes,
           onStep: async (step) => {
-            const { observationIds } = await persistStep(db, personaRunId, step, null);
+            // The eval's traces are the ones most often opened by hand to ask
+            // "why was this defect missed?", so they carry the same evidence a
+            // real run does. Skipped automatically where storage is unset.
+            const screenshot = await storeStepScreenshot(sink, {
+              runId,
+              personaKey: key,
+              stepIndex: step.index,
+              screenshot: step.screenshot,
+            });
+            const { observationIds } = await persistStep(
+              db,
+              personaRunId,
+              step,
+              screenshot,
+            );
             stepCount++;
+            await updatePersonaRun(db, personaRunId, { stepCount: step.index + 1 });
             step.observations.forEach((o, i) => {
               const node = step.snapshot.nodes.find((n) => n.ref === o.ref);
               clusterInputs.push({
@@ -214,6 +241,13 @@ async function runCell(
             });
           },
         });
+        await updatePersonaRun(db, personaRunId, {
+          status: "finished",
+          outcome: result.outcome,
+          blockedReason: result.blockedReason,
+          currentActionLabel: null,
+        });
+
         grounding.decisions += result.grounding.decisions;
         grounding.rejectedDecisions += result.grounding.rejectedDecisions;
         grounding.schemaRejections += result.grounding.schemaRejections;

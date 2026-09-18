@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Callout, SeverityChip } from "./Chrome";
 import { Plate } from "./Plate";
 import { personaMeta, type RunPayload } from "@/lib/api";
+import { groupEvidenceByPersona } from "@/lib/evidence";
 
 /**
  * The report as a critical apparatus: a ranked claim on the left, and on the
@@ -32,8 +33,22 @@ export function Report({ data }: { data: RunPayload }) {
   }
 
   const evidence = issue?.observations ?? [];
-  const primary = evidence[0];
-  const primaryStep = primary ? stepById.get(primary.stepId) : undefined;
+
+  // One witness statement per persona. Not memoised deliberately: the early
+  // return above means a hook here would be conditional, and grouping a few
+  // dozen observations costs nothing.
+  const witnesses = groupEvidenceByPersona(evidence, stepById);
+
+  // Pin numbers run across the whole finding rather than restarting per plate,
+  // so "pin 3" names exactly one mark on exactly one plate and can be cited in
+  // prose. Only marks that are actually drawn get a number, which keeps the
+  // sequence contiguous — a reader who sees pin 2 can always find pin 1.
+  const pinNumber = new Map<string, number>();
+  for (const w of witnesses) {
+    for (const o of w.pins) pinNumber.set(o.id, pinNumber.size + 1);
+  }
+
+  const runFinished = data.run.status === "finished";
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
@@ -126,63 +141,114 @@ export function Report({ data }: { data: RunPayload }) {
             </p>
           </div>
 
-          <Plate
-            src={primaryStep?.screenshotUrl ?? null}
-            alt={`Screenshot showing: ${issue.title}`}
-            pins={evidence
-              .map((o, i) => ({
-                n: i + 1,
-                severity: o.severity,
-                box: o.box,
-                label: o.quote,
-              }))
-              .filter((p) => p.box)}
-            caption={
-              primaryStep ? (
-                <>
-                  <span>{primaryStep.url}</span>
-                  <span className="text-fg-mute">·</span>
-                  <span>step {primaryStep.index}</span>
-                  <span className="text-fg-mute">·</span>
-                  <span>{personaMeta(primaryStep.personaKey).short}</span>
-                </>
-              ) : null
-            }
-          />
+          {/* The witnesses, one statement each.
+              Every persona that hit this finding shows its own plate, in its
+              own viewport, pinned only with what it actually observed there —
+              which is what makes "2 of 3 personas" a claim a reader can check
+              rather than a number they have to trust. */}
+          <div className="flex flex-col gap-2">
+            <h4 className="readout">
+              {witnesses.length === 1
+                ? "the witness"
+                : `the witnesses · ${witnesses.length} of ${personaCount} personas`}
+            </h4>
 
-          {/* The witnesses. */}
-          <div className="flex flex-col gap-3">
-            <h4 className="readout">what the personas said</h4>
-            {evidence.map((o, i) => {
-              const m = personaMeta(o.personaKey);
-              return (
-                <blockquote
-                  key={o.id}
-                  className={`sev-${o.severity} border-l-2 pl-4`}
-                  style={{ borderColor: "var(--sev)" }}
-                >
-                  <p className="text-[0.98rem] italic leading-relaxed text-fg">
-                    “{o.quote}”
-                  </p>
-                  <footer className="readout mt-1.5 flex items-center gap-2 text-[0.62rem]">
-                    <span style={{ color: m.colour }}>{m.avatar}</span>
-                    <span>{m.name}</span>
-                    <span className="text-fg-mute">·</span>
-                    <span className="normal-case tracking-normal">
-                      {o.elementDescription}
-                    </span>
-                    <span className="text-fg-mute">·</span>
-                    <span className="readout-value">{o.elementRef}</span>
-                    {o.box && (
-                      <>
-                        <span className="text-fg-mute">·</span>
-                        <span>pin {i + 1}</span>
-                      </>
-                    )}
-                  </footer>
-                </blockquote>
-              );
-            })}
+            <div className="flex flex-col divide-y divide-hairline">
+              {witnesses.map((w) => {
+                const m = personaMeta(w.personaKey);
+                return (
+                  <section key={w.personaKey} className="flex gap-4 py-6 first:pt-2">
+                    {/* Lane spine, matching the live view: persona colour is
+                        load-bearing here and used nowhere else. */}
+                    <div
+                      className="w-[3px] shrink-0 rounded-full"
+                      style={{ background: m.colour }}
+                      aria-hidden
+                    />
+
+                    <div className="flex min-w-0 flex-1 flex-col gap-3">
+                      <header className="flex flex-wrap items-baseline gap-2">
+                        <span
+                          className="font-mono text-sm"
+                          style={{ color: m.colour }}
+                          aria-hidden
+                        >
+                          {m.avatar}
+                        </span>
+                        <h5 className="text-sm font-medium text-fg">{m.name}</h5>
+                        {!m.sighted && (
+                          <span
+                            className="readout text-[0.6rem]"
+                            title="This persona receives only the accessibility snapshot — no screenshot."
+                          >
+                            snapshot only
+                          </span>
+                        )}
+                        <span className="readout-value ml-auto text-xs text-fg-mute">
+                          {w.observations.length}{" "}
+                          {w.observations.length === 1 ? "observation" : "observations"}
+                        </span>
+                      </header>
+
+                      <Plate
+                        src={w.step?.screenshotUrl ?? null}
+                        alt={`What the ${m.name} saw: ${issue.title}`}
+                        personaKey={w.personaKey}
+                        runFinished={runFinished}
+                        /* Boxes are a percentage of the viewport they were
+                           measured in, and the personas do not share one. */
+                        viewport={m.viewport}
+                        pins={w.pins.map((o) => ({
+                          n: pinNumber.get(o.id) ?? 0,
+                          severity: o.severity,
+                          box: o.box,
+                          label: o.quote,
+                        }))}
+                        caption={
+                          w.step ? (
+                            <>
+                              <span className="normal-case tracking-normal">
+                                {w.step.url}
+                              </span>
+                              <span className="text-fg-mute">·</span>
+                              <span>step {w.step.index}</span>
+                            </>
+                          ) : null
+                        }
+                      />
+
+                      {w.observations.map((o) => {
+                        const pinned = w.pins.includes(o);
+                        return (
+                          <blockquote
+                            key={o.id}
+                            className={`sev-${o.severity} border-l-2 pl-4`}
+                            style={{ borderColor: "var(--sev)" }}
+                          >
+                            <p className="text-[0.98rem] italic leading-relaxed text-fg">
+                              “{o.quote}”
+                            </p>
+                            <footer className="readout mt-1.5 flex flex-wrap items-center gap-2 text-[0.62rem]">
+                              <span className="normal-case tracking-normal">
+                                {o.elementDescription}
+                              </span>
+                              <span className="text-fg-mute">·</span>
+                              <span className="readout-value">{o.elementRef}</span>
+                              {pinned && (
+                                <>
+                                  <span className="text-fg-mute">·</span>
+                                  <span>pin {pinNumber.get(o.id)}</span>
+                                </>
+                              )}
+                            </footer>
+                          </blockquote>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
           </div>
 
           <div className="border-t border-hairline pt-5">

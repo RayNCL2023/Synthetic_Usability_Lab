@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { personaMeta } from "@/lib/api";
+import type { LaneFrame } from "@/lib/steps";
 
 /**
  * The signature element: three persona lanes plotted against ONE shared
@@ -37,6 +38,8 @@ export interface LaneState {
   outcome: string | null;
   /** Seconds until this lane expects a rate-limit slot; null when not waiting. */
   slotInSeconds: number | null;
+  /** This lane's own latest frame. Null for a persona that gets no screenshot. */
+  frame: LaneFrame | null;
   events: LaneEvent[];
 }
 
@@ -152,6 +155,33 @@ export function LaneReadout({
                 >
                   {statusWord(lane)}
                 </p>
+
+                {/* This lane's own view. Three personas running at once is the
+                    claim; three frames updating at once is the evidence for it.
+                    The screen-reader lane has none and says so in its header
+                    instead, rather than showing an apologetic grey box. */}
+                {lane.frame?.screenshotUrl && (
+                  <figure className="mt-2">
+                    <div className="overflow-hidden rounded-sm border border-plate-edge bg-plate">
+                      <motion.img
+                        key={lane.frame.screenshotUrl}
+                        src={lane.frame.screenshotUrl}
+                        alt=""
+                        initial={{ opacity: 0.3 }}
+                        animate={{ opacity: done ? 0.5 : 1 }}
+                        transition={{ duration: 0.3 }}
+                        className="block h-20 w-full object-cover object-top"
+                      />
+                    </div>
+                    <figcaption className="readout mt-1 text-[0.56rem]">
+                      step {lane.frame.screenshotStepIndex}
+                      {/* An image lagging its step is normal mid-run, and
+                          saying so beats letting the frame look current. */}
+                      {lane.frame.screenshotStepIndex !== lane.frame.step.index &&
+                        " · holding while the next frame uploads"}
+                    </figcaption>
+                  </figure>
+                )}
 
                 {/* Newest utterance and newest finding only.
                     Three lanes have to be visible SIMULTANEOUSLY — that is the
