@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { eq } from "drizzle-orm";
 import {
   DataEnv,
@@ -20,7 +20,8 @@ import {
   runSeqCounters,
   steps,
 } from "@sul/shared/db";
-import { presignScreenshot } from "../storage/s3.js";
+import { presignScreenshot, screenshotKey } from "../storage/s3.js";
+import { loadEvents } from "../persistence/repository.js";
 
 /**
  * Seeded demo runs.
@@ -70,6 +71,7 @@ async function exportRun(runId: string, slug: string): Promise<void> {
   if (!run) throw new Error(`no run ${runId}`);
 
   const prs = await db.select().from(personaRuns).where(eq(personaRuns.runId, runId));
+  const personaKeyById = new Map(prs.map((p) => [p.id, p.personaKey]));
   const prIds = new Set(prs.map((p) => p.id));
 
   const allSteps = (await db.select().from(steps)).filter((s) =>
@@ -83,7 +85,10 @@ async function exportRun(runId: string, slug: string): Promise<void> {
   const allLinks = (await db.select().from(issueObservations)).filter((l) =>
     issueIds.has(l.issueId),
   );
-  const evs = await db.select().from(runEvents).where(eq(runEvents.runId, runId));
+  // Via loadEvents rather than a second query: a bare select returns physical
+  // row order, which froze a scrambled log into all four fixtures. loadEvents
+  // is the one reader that orders by seq, and fanout.test.ts holds it to that.
+  const evs = await loadEvents(db, runId, 0);
 
   // Inline every screenshot so the fixture stands alone.
   let embedded = 0;
@@ -95,7 +100,20 @@ async function exportRun(runId: string, slug: string): Promise<void> {
         if (url) dataUri = await fetchAsDataUri(url);
         if (dataUri) embedded++;
       }
-      return { ...s, screenshotDataUri: dataUri };
+      return {
+        ...s,
+        // A run that was itself imported from a fixture carries its image in
+        // screenshotKey (that is how the API serves a demo with no bucket).
+        // Writing it back out would store the same bytes in two fields and
+        // grow the fixture by a third on every round-trip, so the object key
+        // is restored — derived by the same function the uploader used — and
+        // the image lives in screenshotDataUri alone. Export is then
+        // idempotent: re-exporting a fixture reproduces it byte for byte.
+        screenshotKey: s.screenshotKey?.startsWith("data:")
+          ? screenshotKey(runId, personaKeyById.get(s.personaRunId) ?? "unknown", s.index)
+          : s.screenshotKey,
+        screenshotDataUri: dataUri,
+      };
     }),
   );
 
@@ -106,7 +124,6 @@ async function exportRun(runId: string, slug: string): Promise<void> {
   );
   const prByKey = new Map(prs.map((p) => [p.personaKey, p.id]));
   const eventsOut = evs
-    .map((e) => e.payloadJson as RunEvent)
     .map((e) => {
       if (e.type === "persona.step" && e.screenshotUrl) {
         const prId = prByKey.get(e.personaKey);
@@ -205,6 +222,90 @@ async function importAll(): Promise<void> {
   await closeDb();
 }
 
+/**
+ * `reference <slug>` — plain context captures for unillustrated findings.
+ *
+ * The screen-reader persona receives no screenshot, by design and forever. A
+ * run whose findings come only from it therefore has nothing for a reader to
+ * look at. This captures the pages those findings are on, as ordinary page
+ * screenshots, and stores them next to the run.
+ *
+ * It is NOT a re-run: no model is called, no agent loop executes, no
+ * observation or issue is read, written or re-scored. It only adds pictures of
+ * pages, stamped with their own capture date, and the UI labels them as
+ * context rather than as anything a persona saw. Pages already covered by a
+ * sighted persona's screenshot are skipped — real evidence wins.
+ */
+async function captureReferences(slug: string): Promise<void> {
+  const file = path.join(SEED_DIR, `${slug}.json`);
+  if (!fs.existsSync(file)) throw new Error(`no fixture ${slug}`);
+  const seed = JSON.parse(fs.readFileSync(file, "utf8")) as SeededRun & {
+    references?: Array<{ url: string; capturedAt: string; screenshotUrl: string }>;
+  };
+
+  const personaKeyById = new Map(
+    seed.personaRuns.map((p) => [p["id"] as string, p["personaKey"] as string]),
+  );
+  const stepById = new Map(seed.steps.map((s) => [s["id"] as string, s]));
+
+  // Pages that a sighted persona already photographed need no reference.
+  const covered = new Set(
+    seed.steps
+      .filter((s) => s["screenshotDataUri"])
+      .map((s) => s["url"] as string),
+  );
+
+  const wanted = new Map<string, string>();
+  for (const o of seed.observations) {
+    const step = stepById.get(o["stepId"] as string);
+    if (!step) continue;
+    const url = step["url"] as string;
+    if (covered.has(url)) continue;
+    wanted.set(url, personaKeyById.get(o["personaRunId"] as string) ?? "unknown");
+  }
+
+  if (wanted.size === 0) {
+    console.log(`${slug}: every finding is already illustrated — nothing to capture`);
+    return;
+  }
+
+  const { BrowserDriver } = await import("../browser/driver.js");
+  const { getPersona } = await import("@sul/shared");
+
+  const references: Array<{ url: string; capturedAt: string; screenshotUrl: string }> = [];
+  const driver = new BrowserDriver({
+    headless: true,
+    userAgent: process.env.SUL_USER_AGENT ?? "SyntheticUsabilityLab/0.1 (reference capture)",
+    navTimeoutMs: 20_000,
+  });
+  await driver.start();
+  try {
+    for (const [url, personaKey] of wanted) {
+      // Captured in the viewport of the persona that made the finding, so the
+      // reference shows the same layout that persona was reasoning about.
+      const session = await driver.createPersonaContext(getPersona(personaKey));
+      try {
+        await session.page.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 });
+        const buf = await session.page.screenshot({ type: "jpeg", quality: 80, fullPage: false });
+        references.push({
+          url,
+          capturedAt: new Date().toISOString(),
+          screenshotUrl: `data:image/jpeg;base64,${buf.toString("base64")}`,
+        });
+        console.log(`  captured ${url} (${personaKey} viewport, ${Math.round(buf.length / 1024)} KB)`);
+      } finally {
+        await session.close();
+      }
+    }
+  } finally {
+    await driver.stop();
+  }
+
+  seed.references = references;
+  fs.writeFileSync(file, JSON.stringify(seed, null, 2));
+  console.log(`${slug}: ${references.length} reference view(s) stored`);
+}
+
 async function main() {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === "export") {
@@ -212,13 +313,27 @@ async function main() {
     await exportRun(a, b);
   } else if (cmd === "import") {
     await importAll();
+  } else if (cmd === "reference") {
+    if (!a) throw new Error("usage: seed reference <slug>");
+    await captureReferences(a);
   } else {
-    console.error("usage: seed export <runId> <slug> | seed import");
+    console.error(
+      "usage: seed export <runId> <slug> | seed import | seed reference <slug>",
+    );
     process.exit(1);
   }
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+// Only when invoked as a command. Importing this module — to reuse SEED_DIR,
+// as the fixture-integrity tests do — must not run the CLI and exit the host
+// process.
+const invokedDirectly =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

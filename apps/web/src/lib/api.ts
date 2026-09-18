@@ -55,6 +55,12 @@ export interface RunPayload {
       stepId: string;
     }>;
   }>;
+  /**
+   * Plain captures of pages, held for context rather than as evidence. Present
+   * only on seeded runs, and only for findings that no sighted persona
+   * illustrated — see ReferenceView in ./evidence.
+   */
+  references?: Array<{ url: string; capturedAt: string; screenshotUrl: string }>;
 }
 
 /**

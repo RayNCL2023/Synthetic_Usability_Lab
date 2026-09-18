@@ -5,7 +5,8 @@ import { motion } from "framer-motion";
 import { Callout, SeverityChip } from "./Chrome";
 import { Plate } from "./Plate";
 import { personaMeta, type RunPayload } from "@/lib/api";
-import { groupEvidenceByPersona } from "@/lib/evidence";
+import { findReference, groupEvidenceByPersona } from "@/lib/evidence";
+import { plateEmptyState } from "@/lib/plate-state";
 
 /**
  * The report as a critical apparatus: a ranked claim on the left, and on the
@@ -156,6 +157,7 @@ export function Report({ data }: { data: RunPayload }) {
             <div className="flex flex-col divide-y divide-hairline">
               {witnesses.map((w) => {
                 const m = personaMeta(w.personaKey);
+                const reference = findReference(w, data.references);
                 return (
                   <section key={w.personaKey} className="flex gap-4 py-6 first:pt-2">
                     {/* Lane spine, matching the live view: persona colour is
@@ -190,6 +192,27 @@ export function Report({ data }: { data: RunPayload }) {
                         </span>
                       </header>
 
+                      {/* A witness with a reference view below it does not also
+                          need a full-height empty plate explaining the absence
+                          twice — the explanation compresses to a line and the
+                          picture that is actually worth looking at moves up. */}
+                      {!w.step?.screenshotUrl && reference ? (
+                        <p className="border-l-2 border-hairline pl-3 text-[0.9rem] leading-relaxed text-fg-dim">
+                          <span className="text-fg">
+                            {plateEmptyState({
+                              personaKey: w.personaKey,
+                              runFinished,
+                            }).title}
+                            {" — "}
+                          </span>
+                          {
+                            plateEmptyState({
+                              personaKey: w.personaKey,
+                              runFinished,
+                            }).detail
+                          }
+                        </p>
+                      ) : (
                       <Plate
                         src={w.step?.screenshotUrl ?? null}
                         alt={`What the ${m.name} saw: ${issue.title}`}
@@ -216,6 +239,39 @@ export function Report({ data }: { data: RunPayload }) {
                           ) : null
                         }
                       />
+                      )}
+
+                      {/* Context, not evidence. Set apart from the plate above
+                          by a dashed edge and its own date, and stated in
+                          words, because a picture sitting under a finding
+                          reads as proof unless it says otherwise. */}
+                      {reference && (
+                        <figure className="flex flex-col gap-2">
+                          <figcaption className="readout flex flex-wrap items-center gap-2 text-[0.6rem]">
+                            <span className="border border-dashed border-fg-mute/60 px-1.5 py-0.5">
+                              reference view
+                            </span>
+                            <span className="text-fg-mute">
+                              not what this persona received
+                            </span>
+                          </figcaption>
+                          <div className="overflow-hidden rounded-sm border border-dashed border-plate-edge bg-plate p-2 opacity-80">
+                            <img
+                              src={reference.screenshotUrl}
+                              alt={`Reference view of ${reference.url}, captured separately for context`}
+                              className="mx-auto block max-h-[420px] w-auto max-w-full"
+                            />
+                          </div>
+                          <p className="readout text-[0.58rem] text-fg-mute">
+                            <span className="normal-case tracking-normal">
+                              {reference.url}
+                            </span>
+                            {" · captured "}
+                            {new Date(reference.capturedAt).toISOString().slice(0, 10)}
+                            {", separately from the run · no findings are drawn on it"}
+                          </p>
+                        </figure>
+                      )}
 
                       {w.observations.map((o) => {
                         const pinned = w.pins.includes(o);

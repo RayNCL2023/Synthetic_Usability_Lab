@@ -8,6 +8,7 @@ import { Report } from "./Report";
 import { Readout, SeverityChip } from "./Chrome";
 import { personaMeta, formatCents, displayHost, type RunPayload } from "@/lib/api";
 import { laneFrames, mergeSteps, orderEvents } from "@/lib/steps";
+import { eventDwellMs } from "@/lib/replay";
 
 type Phase = "journey" | "report";
 
@@ -56,9 +57,14 @@ export function RunView({
       setElapsed(120_000);
       return;
     }
-    const t = setTimeout(() => setCursor((c) => c + 1), 900 / replaySpeed);
+    // Weighted by what was just revealed, not a flat tick: the event holding
+    // the screen right now is the one at cursor - 1.
+    const t = setTimeout(
+      () => setCursor((c) => c + 1),
+      eventDwellMs(cursor === 0 ? null : (log[cursor - 1] ?? null), replaySpeed),
+    );
     return () => clearTimeout(t);
-  }, [cursor, log.length, replaySpeed]);
+  }, [cursor, log, replaySpeed]);
 
   useEffect(() => {
     if (!live && log.length === 0) return;

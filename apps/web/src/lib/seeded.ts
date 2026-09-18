@@ -40,6 +40,7 @@ interface RawSeed {
   issues: Array<Record<string, unknown>>;
   issueObservations: Array<{ issueId: string; observationId: string }>;
   events: Array<Record<string, unknown>>;
+  references?: Array<{ url: string; capturedAt: string; screenshotUrl: string }>;
 }
 
 async function loadRaw(slug: SeededSlug): Promise<RawSeed> {
@@ -156,6 +157,7 @@ function toRunPayload(seed: RawSeed): RunPayload {
     })),
     steps,
     issues,
+    references: seed.references ?? [],
   };
 }
 

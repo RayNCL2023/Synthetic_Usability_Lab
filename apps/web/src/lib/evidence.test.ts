@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupEvidenceByPersona } from "./evidence";
+import { findReference, groupEvidenceByPersona } from "./evidence";
 import type { RunPayload } from "./api";
 
 type Issue = RunPayload["issues"][number];
@@ -190,5 +190,71 @@ describe("groupEvidenceByPersona", () => {
 
   it("returns nothing for an issue with no observations", () => {
     expect(groupEvidenceByPersona([], index([]))).toEqual([]);
+  });
+});
+
+/**
+ * A reference view is context, never evidence. It exists because the
+ * screen-reader persona's findings are real and unillustrated — it navigates
+ * by the accessibility tree and never receives an image — so a reader has
+ * nothing to look at while reading a genuine blocker.
+ *
+ * The rules are therefore strict: only when the witness has no plate of its
+ * own, only for the exact page the finding is on, and never carrying pins.
+ */
+describe("findReference", () => {
+  const refs = [
+    { url: "https://news.ycombinator.com/newsguidelines.html", capturedAt: "2026-09-18", screenshotUrl: "data:image/jpeg;base64,AAAA" },
+    { url: "https://news.ycombinator.com/newsfaq.html", capturedAt: "2026-09-18", screenshotUrl: "data:image/jpeg;base64,BBBB" },
+  ];
+
+  it("finds the reference for the page the finding is on", () => {
+    const witness = {
+      personaKey: "screen_reader",
+      step: step({ id: "sr2", personaKey: "screen_reader", screenshotUrl: null, url: "https://news.ycombinator.com/newsguidelines.html" }),
+      pins: [],
+      observations: [obs({ personaKey: "screen_reader", stepId: "sr2" })],
+    };
+
+    expect(findReference(witness, refs)?.screenshotUrl).toBe("data:image/jpeg;base64,AAAA");
+  });
+
+  it("offers nothing when the witness already has its own plate", () => {
+    const witness = {
+      personaKey: "impatient_mobile",
+      step: step({ id: "m0", screenshotUrl: "https://minio/real.jpg", url: "https://news.ycombinator.com/newsguidelines.html" }),
+      pins: [],
+      observations: [obs()],
+    };
+
+    expect(findReference(witness, refs)).toBeNull();
+  });
+
+  it("never substitutes a screenshot of a different page", () => {
+    const witness = {
+      personaKey: "screen_reader",
+      step: step({ id: "sr9", personaKey: "screen_reader", screenshotUrl: null, url: "https://news.ycombinator.com/" }),
+      pins: [],
+      observations: [obs()],
+    };
+
+    expect(findReference(witness, refs)).toBeNull();
+  });
+
+  it("offers nothing when there is no step and so no page to reference", () => {
+    const witness = { personaKey: "screen_reader", step: null, pins: [], observations: [obs()] };
+
+    expect(findReference(witness, refs)).toBeNull();
+  });
+
+  it("offers nothing when the run carries no references at all", () => {
+    const witness = {
+      personaKey: "screen_reader",
+      step: step({ id: "sr2", screenshotUrl: null, url: "https://news.ycombinator.com/newsguidelines.html" }),
+      pins: [],
+      observations: [obs()],
+    };
+
+    expect(findReference(witness, undefined)).toBeNull();
   });
 });

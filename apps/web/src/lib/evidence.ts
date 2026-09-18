@@ -20,6 +20,40 @@ type Step = RunPayload["steps"][number];
  * reported, unpinned, rather than being drawn in the wrong place.
  */
 
+/**
+ * A plain capture of a page, held alongside a run for context only.
+ *
+ * The screen-reader persona's findings are real and permanently unillustrated:
+ * it navigates by the accessibility tree and never receives an image, so a run
+ * whose only findings come from it gives the reader nothing to look at. A
+ * reference view fills that gap without ever pretending to be evidence — it is
+ * captured separately, carries its own date, and never takes a pin.
+ */
+export interface ReferenceView {
+  url: string;
+  capturedAt: string;
+  screenshotUrl: string;
+}
+
+/**
+ * The reference view for a witness that has no plate of its own.
+ *
+ * Deliberately strict. It returns nothing when the persona already has a real
+ * screenshot — actual evidence must never be displaced by context — and
+ * nothing when no capture matches the exact page the finding is on, because a
+ * picture of a different page is worse than no picture at all.
+ */
+export function findReference(
+  witness: Pick<PersonaEvidence, "step">,
+  references: ReferenceView[] | undefined,
+): ReferenceView | null {
+  if (!references?.length) return null;
+  if (!witness.step) return null;
+  if (witness.step.screenshotUrl) return null;
+
+  return references.find((r) => r.url === witness.step!.url) ?? null;
+}
+
 export interface PersonaEvidence {
   personaKey: string;
   /** The step whose plate represents this persona. Null if it is missing. */
