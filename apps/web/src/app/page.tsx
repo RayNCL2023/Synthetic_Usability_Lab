@@ -2,7 +2,8 @@ import Link from "next/link";
 import { formatCents, displayHost } from "@/lib/api";
 import { Masthead, SeverityChip } from "@/components/Chrome";
 import { RunForm } from "@/components/RunForm";
-import { loadSeededIndex } from "@/lib/seeded";
+import { loadHeroTrack, loadSeededIndex } from "@/lib/seeded";
+import { HeroReel } from "@/components/HeroReel";
 import { LIVE_RUNS_ENABLED } from "@/lib/flags";
 
 /**
@@ -15,6 +16,7 @@ import { LIVE_RUNS_ENABLED } from "@/lib/flags";
  */
 export default async function Home() {
   const demos = await loadSeededIndex();
+  const hero = await loadHeroTrack();
 
   return (
     <>
@@ -23,11 +25,9 @@ export default async function Home() {
       <section className="border-b border-hairline">
         <div className="mx-auto max-w-[1600px] px-6 py-14 lg:py-20">
           <div
-            className={
-              LIVE_RUNS_ENABLED
-                ? "grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:gap-20"
-                : "max-w-[62rem]"
-            }
+            /* Two columns either way. With live runs off the right-hand side
+               used to be simply absent, leaving most of the front door empty. */
+            className="grid items-center gap-12 lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:gap-16"
           >
             <div>
               <p className="readout mb-5">pre-launch smoke test</p>
@@ -57,7 +57,11 @@ export default async function Home() {
               )}
             </div>
 
-            {LIVE_RUNS_ENABLED && <RunForm />}
+            {LIVE_RUNS_ENABLED ? (
+              <RunForm />
+            ) : (
+              <HeroReel track={hero.track} caption={hero.caption} />
+            )}
           </div>
         </div>
       </section>

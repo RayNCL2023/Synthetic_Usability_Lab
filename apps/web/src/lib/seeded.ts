@@ -1,4 +1,5 @@
 import type { RunPayload, Severity } from "./api";
+import { buildHeroTrack, type HeroTrack } from "./hero-reel";
 
 /**
  * Seeded runs, loaded straight from the committed JSON fixtures.
@@ -194,4 +195,26 @@ export async function loadSeededIndex(): Promise<SeededSummary[]> {
     });
   }
   return out;
+}
+
+/**
+ * The landing-page reel, distilled from a real recorded run.
+ *
+ * Runs on the server: the fixture it reads is over a megabyte because its
+ * screenshots are embedded, and only the few hundred bytes of timings reach
+ * the browser. fixture-badsite is the source because it is the busiest run —
+ * three personas, fourteen steps and twelve findings — so the animation has
+ * something to show rather than three sparse dots.
+ */
+export async function loadHeroTrack(): Promise<{
+  track: HeroTrack;
+  caption: string;
+}> {
+  const seed = await loadRaw("fixture-badsite");
+  const track = buildHeroTrack(seed.events);
+  const seconds = Math.round(track.durationMs / 1000);
+  return {
+    track,
+    caption: `a real recorded run · ${track.lanes.length} personas · ${track.nodes.filter((n) => n.kind === "step").length} steps · ${track.nodes.filter((n) => n.kind === "finding").length} findings`,
+  };
 }

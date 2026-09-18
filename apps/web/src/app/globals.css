@@ -126,6 +126,35 @@ body {
   animation: lane-scan 2.4s linear infinite;
 }
 
+/* The hero wash: three persona-coloured fields drifting behind the reel at
+   walking pace. Deliberately near-invisible — it is atmosphere, and the marks
+   on top are the content. Each field moves on its own period so the pattern
+   never repeats visibly, which is what keeps a seamless loop from reading as
+   a loop. */
+@keyframes hero-drift-a {
+  0%, 100% { transform: translate3d(-6%, -4%, 0) scale(1.05); }
+  50%      { transform: translate3d(6%, 5%, 0) scale(1.18); }
+}
+@keyframes hero-drift-b {
+  0%, 100% { transform: translate3d(7%, 6%, 0) scale(1.15); }
+  50%      { transform: translate3d(-5%, -6%, 0) scale(1.02); }
+}
+@keyframes hero-drift-c {
+  0%, 100% { transform: translate3d(3%, 8%, 0) scale(1.1); }
+  50%      { transform: translate3d(-7%, -3%, 0) scale(1.22); }
+}
+
+.hero-wash {
+  position: absolute;
+  inset: -25%;
+  border-radius: 50%;
+  filter: blur(70px);
+  will-change: transform;
+}
+.hero-wash-a { animation: hero-drift-a 53s ease-in-out infinite; }
+.hero-wash-b { animation: hero-drift-b 67s ease-in-out infinite; }
+.hero-wash-c { animation: hero-drift-c 79s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -135,4 +164,6 @@ body {
     transition-duration: 0.001ms !important;
   }
   .lane-waiting { background-image: none; }
+  /* The wash holds a still frame rather than snapping to its start. */
+  .hero-wash { animation: none !important; }
 }
