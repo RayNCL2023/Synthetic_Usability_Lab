@@ -83,7 +83,7 @@ export const BrowserEnv = z.object({
   SUL_USER_AGENT: z
     .string()
     .default(
-      "SyntheticUsabilityLab/0.1 (+https://github.com/your-org/synthetic-usability-lab; automated usability testing)",
+      "SyntheticUsabilityLab/0.1 (+https://github.com/RayNCL2023/Synthetic_Usability_Lab; automated usability testing)",
     ),
 });
 

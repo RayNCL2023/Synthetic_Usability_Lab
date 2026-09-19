@@ -1,0 +1,23 @@
+# The eval image only needs sources and fixtures. Without this, `COPY . .` drags
+# in host node_modules and .next — which is slow, and fails outright when Next
+# rewrites its generated types while the build context is being read.
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+out
+build
+coverage
+.git
+.github
+*.log
+.env
+.env.*
+!.env.example
+playwright-report
+test-results
+traces
+.scratch
+tmp

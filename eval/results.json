@@ -1,12 +1,12 @@
 {
-  "ranAt": "2026-08-16T21:02:51.291Z",
+  "ranAt": "2026-09-19T16:28:18.355Z",
   "complete": false,
-  "abortedBy": "Snapshot failed on the main frame at http://127.0.0.1:61677/plans.html: frame.evaluate: Target page, context or browser has been closed",
+  "abortedBy": "{\"error\":{\"code\":503,\"message\":\"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\",\"status\":\"UNAVAILABLE\"}}",
   "plannedCells": 1,
   "completedCells": 0,
-  "environment": "HOST (untrusted)",
-  "trustworthy": false,
-  "note": "PRODUCED ON A HOST, NOT IN THE PINNED IMAGE. Chromium renders differently across platforms, which moves bounding boxes and can move recall. These numbers are indicative only and must not be compared against container runs.",
+  "environment": "linux-playwright-container",
+  "trustworthy": true,
+  "note": "Produced in the pinned Linux Playwright image. Comparable across commits.",
   "defectCount": 8,
   "unadjudicatedCount": 0,
   "cells": []

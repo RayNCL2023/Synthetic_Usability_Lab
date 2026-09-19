@@ -172,6 +172,18 @@ and it argues for raising the cap rather than tightening it.
    above come from console output of a sweep that was killed by the daily quota
    *before* the partial-write fix existed. The committed artifact is honest about
    being empty rather than being back-filled by hand.
+
+   As of 2026-09-19 the committed artifact is a **container** run
+   (`"environment": "linux-playwright-container"`, `"trustworthy": true`) that
+   aborted on `503 UNAVAILABLE` from the provider — three attempts across two
+   models (`gemini-3.1-flash-lite`, `gemini-3.7-flash`) all hit it, so it is
+   provider-side load rather than anything in the harness. The container path
+   itself now works end to end: image builds, fixture site serves from inside
+   the container, Chromium drives it, Postgres records 17 steps before the
+   abort. What is missing is a window in which the provider answers.
+
+   Until that run lands, **the two recall numbers above remain host numbers**
+   and are labelled as such.
 3. **False-positive rate is still not measured.** `eval/adjudications.json` is
    empty, so every unmatched issue is reported as `unadjudicated` and the
    false-positive figure is a floor of 0%, not a measurement. Adjudicating

@@ -125,7 +125,21 @@ pnpm eval        # golden eval — see below
 Host Chromium and container Chromium render differently — font stacks
 especially — which moves bounding boxes and therefore pin coordinates. For a
 product whose output *is* annotated screenshots, that is not cosmetic. Host runs
-are dev-only.
+are dev-only, and the harness marks its own output `"trustworthy": false` when
+`SUL_EVAL_CONTAINER` is unset so an untrusted number can never be mistaken for a
+golden one.
+
+```bash
+docker compose up -d                                   # Postgres + Redis
+docker build -f docker/eval.Dockerfile -t sul-eval .
+
+docker run --rm   --add-host=host.docker.internal:host-gateway   -e DATABASE_URL="postgres://sul:sul@host.docker.internal:5432/sul"   -e REDIS_URL="redis://host.docker.internal:6379"   -e GEMINI_API_KEY="$GEMINI_API_KEY"   -e SUL_EVAL_NODE_CAPS="60,120"   -v "$PWD/eval:/app/eval"   sul-eval
+```
+
+The bind mount is what makes the run worth doing: `eval/results.json` is written
+back to the host so the numbers land in a diff and a regression is visible in
+review. The fixture site is served from inside the container, so the eval never
+depends on the public internet.
 
 ## Deploying the demo to Vercel
 
@@ -179,3 +193,7 @@ fly deploy -c fly.worker.toml
 
 `auto_stop_machines` is deliberately off on the worker: a queued job with no
 worker awake would sit until something else woke it.
+
+## Licence
+
+[MIT](LICENSE).

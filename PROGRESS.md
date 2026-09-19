@@ -331,3 +331,42 @@ against a future container run.
   is the run whose numbers are worth committing.
 - `eval/adjudications.json` is empty, so false-positive rate is a floor of 0%
   rather than a measurement. It needs one human pass.
+
+## Pre-deploy hardening
+
+**Landed:** the repo is deployable and publishable.
+
+- **The eval container had never built.** Two faults, both fatal: no
+  `.dockerignore`, so `COPY . .` dragged in host `node_modules` and `.next` and
+  failed outright when Next rewrote its generated types mid-copy; and the
+  corepack bundled in `playwright:v1.49.1-jammy` predates npm's current signing
+  keys, so it died resolving pnpm with `Cannot find matching keyid` before ever
+  reading `packageManager`. pnpm is now installed at the pinned `10.34.5`
+  directly. **This matters more than a build fix:** "`pnpm eval` runs only in
+  the pinned image" was the project's stated answer to eval trustworthiness,
+  and until now that image could not be built at all.
+- **`/runs/<id>` answered a public visitor with a 500.** With
+  `NEXT_PUBLIC_API_URL` unset, `fetch("/runs/x")` from a server component throws
+  `ERR_INVALID_URL` rather than returning a failed response. `runEndpoint()`
+  now returns null when no API is configured and the route renders a page
+  saying live runs are off, with a way back to the recorded ones.
+- **Licence, and the bot's own name.** MIT added — a public repo without one is
+  legally unusable. The user agent sent to every site the worker visits pointed
+  at `github.com/your-org/...`; it now points at the real repository, which is
+  the difference between identifying yourself and pretending to.
+- **The container eval command is documented**, including the bind mount that
+  writes `eval/results.json` back to the host so a regression shows up in a
+  diff.
+
+**Verified:** a clean clone, `pnpm install --frozen-lockfile`, and Vercel's exact
+build command with **no environment variables at all** — build succeeds, all four
+demos prerender static, landing/demo `200`, unknown slug `404`, `/runs/<id>`
+`200`. 193 tests pass.
+
+**Not done**
+
+- **The container sweep still has no cells.** Three attempts across two models
+  all aborted on `503 UNAVAILABLE` from the provider. The harness, the image and
+  the database path are all proven; the provider is not answering. The committed
+  artifact records that honestly rather than falling back to host numbers.
+

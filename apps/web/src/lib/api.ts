@@ -1,5 +1,19 @@
 export const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 
+/**
+ * The URL to load one run from, or null when no API is configured.
+ *
+ * Returning null rather than a relative path is the point. `fetch` in a server
+ * component cannot resolve "/runs/x" — it throws ERR_INVALID_URL — so a
+ * deployment serving only recorded runs answered /runs/<id> with a 500 stack
+ * trace instead of telling the visitor live runs are switched off.
+ */
+export function runEndpoint(base: string, runId: string): string | null {
+  const root = base.trim().replace(/\/+$/, "");
+  if (!root) return null;
+  return `${root}/runs/${encodeURIComponent(runId)}`;
+}
+
 export type Severity = "blocker" | "major" | "minor" | "nitpick";
 
 export interface RunPayload {
